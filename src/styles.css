@@ -67,8 +67,9 @@ select:focus-visible {
 
 .menu-frame,
 .options-frame,
+.result-frame,
 .pause-frame {
-  /* Use the same nine-slice frame as the ranking popup so the corners keep their proportions. */
+  /* Nine-slice keeps the ornate frame corners proportional as each popup changes size. */
   border: 0 solid transparent;
   border-width: 36px;
   border-image: url('/png/default/ui/menu/panel_menu.png') 38 fill / 36px / 0 stretch;
@@ -1004,7 +1005,7 @@ select:focus-visible {
     pointer-events: none;
   }
 
-  .touch button {
+  .touch .touch-button {
     display: grid;
     place-items: center;
     width: clamp(40px, 13vw, 54px);
@@ -1023,13 +1024,67 @@ select:focus-visible {
     transition: transform 100ms ease, filter 100ms ease;
   }
 
-  .touch button:hover {
+  .touch .touch-button:hover {
     background-image: url('/png/default/ui/controls/button_round_hover.png');
   }
 
-  .touch button:active {
+  .touch .touch-button:active {
     background-image: url('/png/default/ui/controls/button_round_pressed.png');
     transform: scale(0.93);
+  }
+
+  .touch .touch-joystick {
+    position: relative;
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: clamp(96px, 22vw, 134px);
+    aspect-ratio: 1;
+    min-height: 0;
+    padding: 0;
+    border: 2px solid #d9a64d;
+    border-radius: 50%;
+    background: radial-gradient(circle, #27485dcc 0 38%, #17374bc9 40% 69%, #092335dc 71%);
+    box-shadow:
+      inset 0 0 0 5px #e8bb6544,
+      inset 0 -7px 14px #031826a8,
+      0 4px 12px #001b2b99;
+    cursor: grab;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+  }
+
+  .touch .touch-joystick::before {
+    position: absolute;
+    border: 1px dashed #ffe5ae66;
+    border-radius: 50%;
+    background:
+      linear-gradient(90deg, transparent 49.5%, #ffe5ae30 50%, transparent 50.5%),
+      linear-gradient(0deg, transparent 49.5%, #ffe5ae30 50%, transparent 50.5%);
+    content: '';
+    inset: 18%;
+    pointer-events: none;
+  }
+
+  .touch .touch-joystick:active {
+    cursor: grabbing;
+  }
+
+  .touch-joystick-thumb {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: 42%;
+    aspect-ratio: 1;
+    border: 2px solid #f4d58e;
+    border-radius: 50%;
+    background: radial-gradient(circle at 34% 28%, #ffe9b0, #d49b43 52%, #784817);
+    box-shadow: inset 0 2px 4px #fff7, 0 3px 7px #001521a8;
+    pointer-events: none;
+    will-change: transform;
   }
 
   .touch-button-icon {
@@ -1042,7 +1097,8 @@ select:focus-visible {
     -webkit-user-drag: none;
   }
 
-  .touch button:focus-visible {
+  .touch .touch-button:focus-visible,
+  .touch .touch-joystick:focus-visible {
     outline: 3px solid #fff1a8;
     outline-offset: 2px;
   }
@@ -1485,7 +1541,7 @@ select:focus-visible {
     bottom: max(0.45rem, env(safe-area-inset-bottom));
   }
 
-  .touch button {
+  .touch .touch-button {
     width: clamp(40px, 7vw, 50px);
   }
 

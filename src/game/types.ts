@@ -3,6 +3,7 @@ export type EnemyKind = 'chaser' | 'shooter';
 
 export type Controls = {
   forward: boolean;
+  backward: boolean;
   left: boolean;
   right: boolean;
   front: boolean;
@@ -90,6 +91,7 @@ export const defaultConfig: GameConfig = {
 
 export const defaultControls = (): Controls => ({
   forward: false,
+  backward: false,
   left: false,
   right: false,
   front: false,

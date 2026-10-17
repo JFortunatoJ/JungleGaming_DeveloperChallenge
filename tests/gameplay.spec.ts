@@ -203,6 +203,29 @@ test('enemy fire can sink the player, stop the simulation and finish without a s
   expect(savedResult).toMatchObject({ reason: 'destroyed', score: 0 });
 });
 
+test('game over keeps fullscreen active until returning to the main menu', async ({ page }) => {
+  await startTestGame(page, { sessionSeconds: 60, spawnSeconds: 30 });
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => document.documentElement,
+    });
+    Object.defineProperty(document, 'exitFullscreen', {
+      configurable: true,
+      value: async () => {
+        document.documentElement.dataset.fullscreenExit = 'true';
+      },
+    });
+  });
+
+  await advanceGame(page, 60.1);
+  await expect(page.getByRole('heading', { name: 'Battle complete' })).toBeVisible();
+  await expect(page.locator('html')).not.toHaveAttribute('data-fullscreen-exit', 'true');
+
+  await page.getByRole('button', { name: 'Main Menu' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-fullscreen-exit', 'true');
+});
+
 test('match result is recorded and can be reopened after a refresh', async ({ page }) => {
   await startTestGame(page, { sessionSeconds: 60, spawnSeconds: 30 });
   await advanceGame(page, 60.1);
@@ -241,11 +264,16 @@ test('touch controls are visible and move the ship in mobile landscape', async (
   test.skip(!isMobile, 'This interaction is specific to touch-oriented viewports.');
   await startTestGame(page, undefined, 'normal', true);
 
-  const forward = page.getByRole('button', { name: 'Forward (W / ↑)' });
-  await expect(forward).toBeVisible();
+  const joystick = page.getByRole('button', { name: /^Movement joystick/ });
+  await expect(joystick).toBeVisible();
   const initial = await readGameState(page);
-  await forward.hover();
+  const bounds = await joystick.boundingBox();
+  expect(bounds).not.toBeNull();
+  await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
   await page.mouse.down();
+  await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height * 0.15, {
+    steps: 4,
+  });
   await page.waitForTimeout(40);
   await advanceGame(page, 0.5);
   await page.mouse.up();
@@ -258,19 +286,37 @@ test('brief mobile taps trigger movement and all cannon controls', async ({ page
   await startTestGame(page, undefined, 'normal', true);
 
   const initial = await readGameState(page);
-  const tap = async (name: string) => {
+  const joystick = page.getByRole('button', { name: /^Movement joystick/ });
+  const joystickBounds = await joystick.boundingBox();
+  expect(joystickBounds).not.toBeNull();
+  const tapJoystick = async (xRatio: number, yRatio: number) => {
+    await page.touchscreen.tap(
+      joystickBounds!.x + joystickBounds!.width * xRatio,
+      joystickBounds!.y + joystickBounds!.height * yRatio,
+    );
+  };
+  const tapCannon = async (name: string) => {
     const bounds = await page.getByRole('button', { name }).boundingBox();
     expect(bounds).not.toBeNull();
     await page.touchscreen.tap(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
   };
 
-  await tap('Forward (W / ↑)');
+  await tapJoystick(0.5, 0.15);
   await advanceGame(page, 0.1);
-  expect((await readGameState(page)).player.x).toBeGreaterThan(initial.player.x);
+  const movedForward = await readGameState(page);
+  expect(movedForward.player.x).toBeGreaterThan(initial.player.x);
 
-  await tap('Port broadside (Q)');
-  await tap('Front fire (Space)');
-  await tap('Starboard broadside (E)');
+  await tapJoystick(0.5, 0.85);
+  await advanceGame(page, 0.1);
+  expect((await readGameState(page)).player.x).toBeLessThan(movedForward.player.x);
+
+  await tapJoystick(0.15, 0.5);
+  await advanceGame(page, 0.1);
+  expect((await readGameState(page)).player.angle).toBeLessThan(0);
+
+  await tapCannon('Port broadside (Q)');
+  await tapCannon('Front fire (Space)');
+  await tapCannon('Starboard broadside (E)');
   await advanceGame(page, 0.05);
 
   const state = await readGameState(page);

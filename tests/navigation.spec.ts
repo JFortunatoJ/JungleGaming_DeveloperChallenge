@@ -29,7 +29,9 @@ test('options validate and persist after leaving and refreshing the screen', asy
 test('menu explains keyboard and touch controls and paginates ranking/history', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText(/Broadsides: Q \/ E/)).toBeVisible();
-  await expect(page.getByText(/on-screen movement and cannon buttons/)).toBeVisible();
+  await expect(
+    page.getByText(/drag the movement joystick and tap the cannon buttons/),
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Ranking' }).click();
   await expect(page.getByText('Captain Ada')).toBeVisible();

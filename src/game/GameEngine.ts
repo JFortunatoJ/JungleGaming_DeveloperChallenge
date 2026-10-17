@@ -523,16 +523,19 @@ export class GameEngine {
 
   private movePlayer(dt: number) {
     const p = this.player;
-    setLoopingSound('ship_sailing_loop', this.controls.forward);
+    setLoopingSound('ship_sailing_loop', this.controls.forward || this.controls.backward);
 
     if (this.controls.left) p.angle -= this.config.turnSpeed * dt;
     if (this.controls.right) p.angle += this.config.turnSpeed * dt;
 
-    if (this.controls.forward) {
+    const movementDirection =
+      this.controls.forward === this.controls.backward ? 0 : this.controls.forward ? 1 : -0.65;
+
+    if (movementDirection !== 0) {
       this.tryMove(
         p,
-        Math.cos(p.angle) * this.config.playerSpeed * dt,
-        Math.sin(p.angle) * this.config.playerSpeed * dt,
+        Math.cos(p.angle) * this.config.playerSpeed * dt * movementDirection,
+        Math.sin(p.angle) * this.config.playerSpeed * dt * movementDirection,
       );
     }
 

@@ -46,6 +46,7 @@ type AssetLoadState = { status: 'loading' | 'ready' | 'error'; progress: number;
 
 const labels: Record<keyof Controls, string> = {
   forward: 'Forward (W / ↑)',
+  backward: 'Reverse (S / ↓)',
   left: 'Turn left (A / ←)',
   right: 'Turn right (D / →)',
   front: 'Front fire (Space)',
@@ -118,7 +119,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (screen === 'game') return;
+    if (screen === 'game' || screen === 'result') return;
 
     window.screen.orientation?.unlock();
     if (document.fullscreenElement === document.documentElement) {
@@ -173,6 +174,11 @@ export default function App() {
 
   const enterFullscreen = (showError = true) => {
     const gameRoot = document.documentElement;
+    if (document.fullscreenElement === gameRoot) {
+      setIsFullscreen(true);
+      return;
+    }
+
     if (!gameRoot.requestFullscreen) {
       if (showError) setFullscreenStatus('Fullscreen is not supported by this browser.');
       return;
@@ -288,6 +294,8 @@ export default function App() {
       const map: Record<string, keyof Controls> = {
         w: 'forward',
         arrowup: 'forward',
+        s: 'backward',
+        arrowdown: 'backward',
         a: 'left',
         arrowleft: 'left',
         d: 'right',
@@ -313,6 +321,8 @@ export default function App() {
       const map: Record<string, keyof Controls> = {
         w: 'forward',
         arrowup: 'forward',
+        s: 'backward',
+        arrowdown: 'backward',
         a: 'left',
         arrowleft: 'left',
         d: 'right',
@@ -665,9 +675,12 @@ function Menu({
         <p className="tagline">Set sail. Take command.</p>
 
         <div className="menu-controls" aria-label="Controls">
-          <p><strong>Move:</strong> W / ↑ · <strong>Turn:</strong> A / ←, D / →</p>
+          <p>
+            <strong>Move:</strong> W / ↑ · <strong>Reverse:</strong> S / ↓ ·{' '}
+            <strong>Turn:</strong> A / ←, D / →
+          </p>
           <p><strong>Fire:</strong> Space · <strong>Broadsides:</strong> Q / E</p>
-          <p>Mobile: use the on-screen movement and cannon buttons.</p>
+          <p>Mobile: drag the movement joystick and tap the cannon buttons.</p>
         </div>
 
         <div className="main-actions">
@@ -1166,15 +1179,16 @@ function TouchControls({
   fireRequests: React.MutableRefObject<PlayerWeapon[]>;
 }) {
   // Reutiliza os ícones do pacote de assets para manter os controles touch no estilo do jogo.
-  const icons: Record<keyof Controls, string> = {
-    forward: 'icon_forward',
-    left: 'icon_turn_left',
-    right: 'icon_turn_right',
+  const icons: Record<PlayerWeapon, string> = {
     front: 'icon_fire_front',
     port: 'icon_fire_left',
     starboard: 'icon_fire_right',
   };
 
+  const [stickPosition, setStickPosition] = useState({ x: 0, y: 0 });
+  const joystickPointer = useRef<number | null>(null);
+  const joystickPressStartedAt = useRef(0);
+  const joystickReleaseTimer = useRef<number | null>(null);
   const activePointers = useRef(new Map<keyof Controls, Set<number>>());
   const pressStartedAt = useRef(new Map<keyof Controls, number>());
   const releaseTimers = useRef(new Map<keyof Controls, number>());
@@ -1182,6 +1196,9 @@ function TouchControls({
   useEffect(
     () => () => {
       for (const timer of releaseTimers.current.values()) window.clearTimeout(timer);
+      if (joystickReleaseTimer.current !== null) {
+        window.clearTimeout(joystickReleaseTimer.current);
+      }
       controls.current = defaultControls();
       fireRequests.current = [];
     },
@@ -1238,7 +1255,44 @@ function TouchControls({
     },
   });
 
-  const renderControl = (control: keyof Controls) => (
+  const updateJoystick = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const maxOffset = bounds.width * 0.29;
+    const deltaX = event.clientX - (bounds.left + bounds.width / 2);
+    const deltaY = event.clientY - (bounds.top + bounds.height / 2);
+    const distance = Math.hypot(deltaX, deltaY);
+    const scale = distance > maxOffset ? maxOffset / distance : 1;
+    const x = deltaX * scale;
+    const y = deltaY * scale;
+    const normalizedX = x / maxOffset;
+    const normalizedY = y / maxOffset;
+    const inDeadZone = Math.hypot(normalizedX, normalizedY) < 0.2;
+
+    setStickPosition({ x, y });
+    controls.current.left = !inDeadZone && normalizedX <= -0.35;
+    controls.current.right = !inDeadZone && normalizedX >= 0.35;
+    controls.current.forward = !inDeadZone && normalizedY <= -0.35;
+    controls.current.backward = !inDeadZone && normalizedY >= 0.35;
+  };
+
+  const releaseJoystick = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (joystickPointer.current !== event.pointerId) return;
+
+    joystickPointer.current = null;
+    setStickPosition({ x: 0, y: 0 });
+
+    const elapsed = performance.now() - joystickPressStartedAt.current;
+    const remainingPressTime = Math.max(0, 80 - elapsed);
+    joystickReleaseTimer.current = window.setTimeout(() => {
+      controls.current.forward = false;
+      controls.current.backward = false;
+      controls.current.left = false;
+      controls.current.right = false;
+      joystickReleaseTimer.current = null;
+    }, remainingPressTime);
+  };
+
+  const renderControl = (control: PlayerWeapon) => (
     <button
       key={control}
       className="touch-button"
@@ -1257,9 +1311,35 @@ function TouchControls({
 
   return (
     <nav className="touch" aria-label="Touch game controls">
-      <div className="touch-group touch-movement" aria-label="Movement">
-        {(['left', 'forward', 'right'] as const).map(renderControl)}
-      </div>
+      <button
+        type="button"
+        className="touch-joystick"
+        aria-label="Movement joystick. Drag up to move, down to reverse and sideways to steer."
+        onPointerDown={(event) => {
+          event.preventDefault();
+          if (joystickPointer.current !== null) return;
+          if (joystickReleaseTimer.current !== null) {
+            window.clearTimeout(joystickReleaseTimer.current);
+            joystickReleaseTimer.current = null;
+          }
+          joystickPointer.current = event.pointerId;
+          joystickPressStartedAt.current = performance.now();
+          event.currentTarget.setPointerCapture(event.pointerId);
+          updateJoystick(event);
+        }}
+        onPointerMove={(event) => {
+          if (joystickPointer.current === event.pointerId) updateJoystick(event);
+        }}
+        onPointerUp={releaseJoystick}
+        onPointerCancel={releaseJoystick}
+        onLostPointerCapture={releaseJoystick}
+      >
+        <span
+          className="touch-joystick-thumb"
+          style={{ transform: `translate(${stickPosition.x}px, ${stickPosition.y}px)` }}
+          aria-hidden="true"
+        />
+      </button>
       <div className="touch-group touch-weapons" aria-label="Weapons">
         {(['port', 'front', 'starboard'] as const).map(renderControl)}
       </div>
