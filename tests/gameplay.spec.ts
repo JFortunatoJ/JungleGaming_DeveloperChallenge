@@ -31,6 +31,23 @@ test('keyboard movement, rotation and island collision keep the player inside th
   expect(turned.player.y).toBeLessThanOrEqual(turned.arena.height - 28);
 });
 
+test('water background covers the entire mobile landscape canvas around the 16:9 arena', async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(!isMobile, 'This background edge case is specific to wider mobile landscape screens.');
+  await startTestGame(page, { sessionSeconds: 60, spawnSeconds: 30 }, 'normal', true);
+
+  const state = await readGameState(page);
+  const canvasBounds = await page.locator('.canvas').boundingBox();
+
+  expect(canvasBounds).not.toBeNull();
+  expect(state.backgroundBounds.x).toBeCloseTo(0, 0);
+  expect(state.backgroundBounds.y).toBeCloseTo(0, 0);
+  expect(state.backgroundBounds.width).toBeGreaterThanOrEqual(canvasBounds!.width - 1);
+  expect(state.backgroundBounds.height).toBeGreaterThanOrEqual(canvasBounds!.height - 1);
+});
+
 test('front fire cooldowns and parallel broadsides work at the same time', async ({ page }) => {
   await startTestGame(page);
 

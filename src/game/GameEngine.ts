@@ -192,6 +192,7 @@ const findPathWaypoint = (start: { x: number; y: number }, target: { x: number; 
 /** The engine owns the continuous state. React only receives a small HUD snapshot a few times per second. */
 export class GameEngine {
   readonly stage = new Container();
+  private water!: TilingSprite;
   private controls: Controls = defaultControls();
   private player!: Ship;
   private enemies: Ship[] = [];
@@ -258,7 +259,15 @@ export class GameEngine {
     if (width <= 0 || height <= 0) return;
     const scale = Math.min(width / W, height / H);
     this.stage.scale.set(scale);
-    this.stage.position.set((width - W * scale) / 2, (height - H * scale) / 2);
+    const offsetX = (width - W * scale) / 2;
+    const offsetY = (height - H * scale) / 2;
+    this.stage.position.set(offsetX, offsetY);
+
+    // Keep the arena at its original 16:9 scale, but extend the water beneath the
+    // letterboxed edges so wide landscape screens never show empty side bands.
+    this.water.position.set(-offsetX / scale, -offsetY / scale);
+    this.water.width = width / scale;
+    this.water.height = height / scale;
   }
 
   destroy() {
@@ -304,6 +313,12 @@ export class GameEngine {
         splashes: this.splashEffects.length,
         impactParticles: this.impactParticles.length,
       },
+      backgroundBounds: {
+        x: this.stage.position.x + this.water.position.x * this.stage.scale.x,
+        y: this.stage.position.y + this.water.position.y * this.stage.scale.y,
+        width: this.water.width * this.stage.scale.x,
+        height: this.water.height * this.stage.scale.y,
+      },
       shotCounts: { ...this.shotCounts },
       arena: { width: W, height: H, islands: islands.map(({ x, y, r }) => ({ x, y, r })) },
     };
@@ -319,12 +334,12 @@ export class GameEngine {
   private drawArena() {
     // TilingSprite repeats the 64px water tile across the whole playfield without
     // creating dozens of individual sprites, keeping the background inexpensive.
-    const water = new TilingSprite({
+    this.water = new TilingSprite({
       texture: this.textures.water,
       width: W,
       height: H,
     });
-    this.stage.addChild(water);
+    this.stage.addChild(this.water);
     islands.forEach((island, index) => this.drawIsland(island, index));
   }
 
