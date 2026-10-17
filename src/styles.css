@@ -949,6 +949,12 @@ select:focus-visible {
   gap: 0.45rem;
 }
 
+.fullscreen-status {
+  margin: 0.5rem 0 0;
+  color: #ffe5ae;
+  font-size: 0.75rem;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

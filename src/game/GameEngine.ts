@@ -7,6 +7,7 @@ import {
   type EndReason,
   type GameConfig,
   type GameSnapshot,
+  type PlayerWeapon,
 } from './types';
 
 type Ship = {
@@ -232,6 +233,13 @@ export class GameEngine {
 
   setControl(name: keyof Controls, value: boolean) {
     this.controls[name] = value;
+  }
+
+  firePlayerWeapon(weapon: PlayerWeapon) {
+    if (!this.running || this.paused || !this.player.alive) return;
+
+    const offset = weapon === 'port' ? -Math.PI / 2 : weapon === 'starboard' ? Math.PI / 2 : 0;
+    this.fire(this.player, offset, weapon);
   }
 
   setPaused(value: boolean, now = performance.now()) {

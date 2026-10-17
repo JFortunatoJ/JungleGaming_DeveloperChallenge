@@ -10,6 +10,8 @@ export type Controls = {
   starboard: boolean;
 };
 
+export type PlayerWeapon = Extract<keyof Controls, 'front' | 'port' | 'starboard'>;
+
 export type GameOptions = {
   sessionSeconds: number;
   spawnSeconds: number;

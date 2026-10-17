@@ -40,7 +40,7 @@ Playwright uses installed Chrome or Edge when available and otherwise uses its m
 | Fire left/right broadsides | `Q` / `E` | Port/starboard cannon controls |
 | Pause/resume | `Escape` or HUD pause button | HUD pause button |
 
-Movement, rotation and firing can be combined. The supported mobile game orientation is landscape; the game asks the player to rotate a portrait device and requests an orientation lock where the browser supports it. The browser or operating system may decline that lock, so the in-game orientation prompt remains the fallback.
+Movement, rotation and firing can be combined. The supported mobile game orientation is landscape; the game pauses in portrait, asks the player to rotate the device and requests an orientation lock when available. On mobile, Play requests browser fullscreen with navigation UI hidden; the pause menu can enter or exit fullscreen later. Browsers and operating systems may decline fullscreen or orientation lock, so the in-game orientation prompt remains the fallback.
 
 ## Gameplay configuration
 

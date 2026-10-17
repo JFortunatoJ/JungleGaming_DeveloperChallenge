@@ -36,6 +36,7 @@ import {
   type GameOptions,
   type GameSnapshot,
   type MatchResult,
+  type PlayerWeapon,
 } from './game/types';
 
 type Screen = 'menu' | 'options' | 'game' | 'result' | 'ranking' | 'history';
@@ -77,6 +78,8 @@ export default function App() {
   const [hud, setHud] = useState(initialHud);
   const [paused, setPaused] = useState(false);
   const [pauseOptionsOpen, setPauseOptionsOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenStatus, setFullscreenStatus] = useState('');
   const [result, setResult] = useState<MatchResult | null>(loadLastResult);
   const [pendingMatches, setPendingMatches] = useState(loadPendingMatches);
   const [assetLoad, setAssetLoad] = useState<AssetLoadState>({
@@ -90,6 +93,7 @@ export default function App() {
   );
 
   const controls = useRef(defaultControls());
+  const fireRequests = useRef<PlayerWeapon[]>([]);
   const pendingReplayStarted = useRef(false);
   const queryClient = useQueryClient();
 
@@ -105,7 +109,21 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (screen !== 'game') window.screen.orientation?.unlock();
+    const updateFullscreen = () => {
+      setIsFullscreen(document.fullscreenElement === document.documentElement);
+    };
+
+    document.addEventListener('fullscreenchange', updateFullscreen);
+    return () => document.removeEventListener('fullscreenchange', updateFullscreen);
+  }, []);
+
+  useEffect(() => {
+    if (screen === 'game') return;
+
+    window.screen.orientation?.unlock();
+    if (document.fullscreenElement === document.documentElement) {
+      void document.exitFullscreen().catch(() => undefined);
+    }
   }, [screen]);
 
   const needsLandscape =
@@ -153,10 +171,50 @@ export default function App() {
     setGameCanvasKey((key) => key + 1);
   };
 
-  const play = () => {
-    if (deviceOrientation.mobile && window.screen.orientation?.lock) {
-      void window.screen.orientation.lock('landscape').catch(() => undefined);
+  const enterFullscreen = (showError = true) => {
+    const gameRoot = document.documentElement;
+    if (!gameRoot.requestFullscreen) {
+      if (showError) setFullscreenStatus('Fullscreen is not supported by this browser.');
+      return;
     }
+
+    setFullscreenStatus('');
+    void gameRoot
+      .requestFullscreen({ navigationUI: 'hide' })
+      .then(() => {
+        setIsFullscreen(true);
+        if (deviceOrientation.mobile && window.screen.orientation?.lock) {
+          void window.screen.orientation.lock('landscape').catch(() => undefined);
+        }
+      })
+      .catch(() => {
+        if (showError) {
+          setFullscreenStatus(
+            'Your browser could not enter fullscreen. You can still play in landscape.',
+          );
+        }
+      });
+  };
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement === document.documentElement) {
+      setFullscreenStatus('');
+      void document
+        .exitFullscreen()
+        .then(() => {
+          setIsFullscreen(false);
+          window.screen.orientation?.unlock();
+        })
+        .catch(() => setFullscreenStatus('Your browser could not exit fullscreen.'));
+      return;
+    }
+
+    enterFullscreen();
+  };
+
+  const play = () => {
+    setFullscreenStatus('');
+    if (deviceOrientation.mobile) enterFullscreen(false);
     startGameAudio();
     setActiveConfig({ ...defaultConfig, ...options });
     setHud({
@@ -166,6 +224,7 @@ export default function App() {
     });
     setPaused(false);
     controls.current = defaultControls();
+    fireRequests.current = [];
     setAssetLoad({ status: 'loading', progress: 0, message: '' });
     setGameCanvasKey((key) => key + 1);
     setScreen('game');
@@ -183,6 +242,7 @@ export default function App() {
 
   const pauseGame = () => {
     controls.current = defaultControls();
+    fireRequests.current = [];
     setPaused(true);
     setGameAudioPaused(true);
     playSound('game_pause');
@@ -238,7 +298,7 @@ export default function App() {
       };
 
       const key = map[e.key.toLowerCase()];
-      if (key && !paused) {
+      if (key && !paused && !needsLandscape) {
         e.preventDefault();
         controls.current[key] = true;
       }
@@ -282,7 +342,19 @@ export default function App() {
       window.removeEventListener('blur', blur);
       document.removeEventListener('visibilitychange', blur);
     };
-  }, [assetLoad.status, paused, screen]);
+  }, [assetLoad.status, needsLandscape, paused, screen]);
+
+  useEffect(() => {
+    if (screen !== 'game') return;
+
+    if (needsLandscape) {
+      controls.current = defaultControls();
+      fireRequests.current = [];
+      setGameAudioPaused(true);
+    } else if (!paused) {
+      setGameAudioPaused(false);
+    }
+  }, [needsLandscape, paused, screen]);
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -412,6 +484,7 @@ export default function App() {
           key={gameCanvasKey}
           config={gameConfig}
           controls={controls}
+          fireRequests={fireRequests}
           onHud={setHud}
           onEnd={end}
           onAssetProgress={updateAssetProgress}
@@ -467,12 +540,17 @@ export default function App() {
           remaining{paused ? ', paused' : ''}
         </p>
 
-        {assetLoad.status === 'ready' && <TouchControls controls={controls} />}
+        {assetLoad.status === 'ready' && (
+          <TouchControls controls={controls} fireRequests={fireRequests} />
+        )}
 
         {paused && (
           <PauseOverlay
             options={options}
             settingsOpen={pauseOptionsOpen}
+            isFullscreen={isFullscreen}
+            fullscreenStatus={fullscreenStatus}
+            onToggleFullscreen={toggleFullscreen}
             onResume={() => {
               setPauseOptionsOpen(false);
               resumeGame();
@@ -981,6 +1059,9 @@ function OptionsForm({
 function PauseOverlay({
   options,
   settingsOpen,
+  isFullscreen,
+  fullscreenStatus,
+  onToggleFullscreen,
   onResume,
   onOptions,
   onSaveOptions,
@@ -989,6 +1070,9 @@ function PauseOverlay({
 }: {
   options: GameOptions;
   settingsOpen: boolean;
+  isFullscreen: boolean;
+  fullscreenStatus: string;
+  onToggleFullscreen: () => void;
   onResume: () => void;
   onOptions: () => void;
   onSaveOptions: (value: GameOptions) => void;
@@ -1053,8 +1137,20 @@ function PauseOverlay({
             <div className="pause-actions">
               <WoodButton onClick={onResume}>Resume</WoodButton>
               <WoodButton onClick={onOptions}>Options</WoodButton>
+              <WoodButton
+                variant="secondary"
+                aria-pressed={isFullscreen}
+                onClick={onToggleFullscreen}
+              >
+                {isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+              </WoodButton>
               <WoodButton onClick={onMainMenu}>Main Menu</WoodButton>
             </div>
+            {fullscreenStatus && (
+              <p className="fullscreen-status" role="status">
+                {fullscreenStatus}
+              </p>
+            )}
           </>
         )}
       </section>
@@ -1062,7 +1158,13 @@ function PauseOverlay({
   );
 }
 
-function TouchControls({ controls }: { controls: React.MutableRefObject<Controls> }) {
+function TouchControls({
+  controls,
+  fireRequests,
+}: {
+  controls: React.MutableRefObject<Controls>;
+  fireRequests: React.MutableRefObject<PlayerWeapon[]>;
+}) {
   // Reutiliza os ícones do pacote de assets para manter os controles touch no estilo do jogo.
   const icons: Record<keyof Controls, string> = {
     forward: 'icon_forward',
@@ -1073,19 +1175,66 @@ function TouchControls({ controls }: { controls: React.MutableRefObject<Controls
     starboard: 'icon_fire_right',
   };
 
+  const activePointers = useRef(new Map<keyof Controls, Set<number>>());
+  const pressStartedAt = useRef(new Map<keyof Controls, number>());
+  const releaseTimers = useRef(new Map<keyof Controls, number>());
+
+  useEffect(
+    () => () => {
+      for (const timer of releaseTimers.current.values()) window.clearTimeout(timer);
+      controls.current = defaultControls();
+      fireRequests.current = [];
+    },
+    [controls, fireRequests],
+  );
+
+  const releasePointer = (control: keyof Controls, pointerId: number) => {
+    const pointers = activePointers.current.get(control);
+    if (!pointers?.has(pointerId)) return;
+
+    pointers.delete(pointerId);
+    if (pointers.size > 0) return;
+
+    const elapsed = performance.now() - (pressStartedAt.current.get(control) ?? 0);
+    const remainingPressTime = Math.max(0, 80 - elapsed);
+    const timer = window.setTimeout(() => {
+      if (!activePointers.current.get(control)?.size) controls.current[control] = false;
+      releaseTimers.current.delete(control);
+      pressStartedAt.current.delete(control);
+    }, remainingPressTime);
+    releaseTimers.current.set(control, timer);
+  };
+
   const bind = (control: keyof Controls) => ({
     onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      const releaseTimer = releaseTimers.current.get(control);
+      if (releaseTimer !== undefined) window.clearTimeout(releaseTimer);
+      releaseTimers.current.delete(control);
+
+      let pointers = activePointers.current.get(control);
+      if (!pointers) {
+        pointers = new Set();
+        activePointers.current.set(control, pointers);
+      }
+      if (pointers.size === 0) pressStartedAt.current.set(control, performance.now());
+      pointers.add(event.pointerId);
       controls.current[control] = true;
+
+      if (control === 'front' || control === 'port' || control === 'starboard') {
+        fireRequests.current.push(control);
+      }
+
       event.currentTarget.setPointerCapture(event.pointerId);
     },
-    onPointerUp: () => {
-      controls.current[control] = false;
+    onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => {
+      releasePointer(control, event.pointerId);
     },
-    onPointerCancel: () => {
-      controls.current[control] = false;
+    onPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => {
+      releasePointer(control, event.pointerId);
     },
-    onLostPointerCapture: () => {
-      controls.current[control] = false;
+    onLostPointerCapture: (event: ReactPointerEvent<HTMLButtonElement>) => {
+      releasePointer(control, event.pointerId);
     },
   });
 

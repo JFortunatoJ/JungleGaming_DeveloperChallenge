@@ -140,10 +140,16 @@ test('hits damage once per cannonball and a defeated ship scores exactly one poi
   expect((await readGameState(page)).score).toBe(1);
 });
 
-test('pause and hidden-tab pause freeze simulation until explicit resume', async ({ page }) => {
+test('pause and hidden-tab pause freeze simulation until explicit resume', async ({
+  page,
+  isMobile,
+}) => {
   await startTestGame(page);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Paused' })).toBeVisible();
+  const fullscreenButton = page.getByRole('button', { name: /^(Enter|Exit) Fullscreen$/ });
+  await expect(fullscreenButton).toBeVisible();
+  if (isMobile) await expect(fullscreenButton).toBeInViewport();
 
   const beforePause = await readGameState(page);
   await advanceGame(page, 5);
@@ -247,6 +253,32 @@ test('touch controls are visible and move the ship in mobile landscape', async (
   expect((await readGameState(page)).player.x).toBeGreaterThan(initial.player.x);
 });
 
+test('brief mobile taps trigger movement and all cannon controls', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'This interaction is specific to touch-oriented viewports.');
+  await startTestGame(page, undefined, 'normal', true);
+
+  const initial = await readGameState(page);
+  const tap = async (name: string) => {
+    const bounds = await page.getByRole('button', { name }).boundingBox();
+    expect(bounds).not.toBeNull();
+    await page.touchscreen.tap(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
+  };
+
+  await tap('Forward (W / ↑)');
+  await advanceGame(page, 0.1);
+  expect((await readGameState(page)).player.x).toBeGreaterThan(initial.player.x);
+
+  await tap('Port broadside (Q)');
+  await tap('Front fire (Space)');
+  await tap('Starboard broadside (E)');
+  await advanceGame(page, 0.05);
+
+  const state = await readGameState(page);
+  expect(state.shotCounts.port).toBe(1);
+  expect(state.shotCounts.front).toBe(1);
+  expect(state.shotCounts.starboard).toBe(1);
+});
+
 test('portrait gameplay asks for landscape and pauses until the device is rotated', async ({
   page,
   isMobile,
@@ -257,6 +289,7 @@ test('portrait gameplay asks for landscape and pauses until the device is rotate
 
   await expect(page.getByRole('heading', { name: 'Rotate your device' })).toBeVisible();
   const beforePortrait = await readGameState(page);
+  expect(beforePortrait.paused).toBe(true);
   await advanceGame(page, 2);
   expect((await readGameState(page)).elapsed).toBe(beforePortrait.elapsed);
 

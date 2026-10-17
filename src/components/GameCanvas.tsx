@@ -2,13 +2,21 @@ import { Application, Assets, Texture } from 'pixi.js';
 import { useEffect, useRef } from 'react';
 
 import { GameEngine, type GameTextures } from '../game/GameEngine';
-import type { Controls, EndReason, EnemyKind, GameConfig, GameSnapshot } from '../game/types';
+import type {
+  Controls,
+  EndReason,
+  EnemyKind,
+  GameConfig,
+  GameSnapshot,
+  PlayerWeapon,
+} from '../game/types';
 
 let simulatedAssetFailureConsumed = false;
 
 type Props = {
   config: GameConfig;
   controls: React.MutableRefObject<Controls>;
+  fireRequests: React.MutableRefObject<PlayerWeapon[]>;
   onHud: (value: GameSnapshot) => void;
   onEnd: (reason: EndReason, score: number, duration: number) => void;
   onAssetProgress: (progress: number) => void;
@@ -47,6 +55,7 @@ const createSeededRandom = (seed: number) => {
 export function GameCanvas({
   config,
   controls,
+  fireRequests,
   onHud,
   onEnd,
   onAssetProgress,
@@ -127,7 +136,8 @@ export function GameCanvas({
         !simulatedAssetFailureConsumed
       ) {
         simulatedAssetFailureConsumed = true;
-        await new Promise((resolve) => window.setTimeout(resolve, 150));
+        // Give the loading UI enough time to render before the deterministic failure is raised.
+        await new Promise((resolve) => window.setTimeout(resolve, 600));
         throw new Error('Simulated asset request failure.');
       }
 
@@ -240,6 +250,16 @@ export function GameCanvas({
       gameEngine.setPaused(pausedRef.current, startNow);
       gameEngine.start(startNow);
 
+      const syncControls = () => {
+        for (const [key, value] of Object.entries(controls.current)) {
+          gameEngine.setControl(key as keyof Controls, value);
+        }
+
+        for (const weapon of fireRequests.current.splice(0)) {
+          gameEngine.firePlayerWeapon(weapon);
+        }
+      };
+
       if (testMode) {
         testBridge = {
           setControl: (control, pressed) => gameEngine.setControl(control, pressed),
@@ -252,6 +272,7 @@ export function GameCanvas({
             while (remaining > 0) {
               const delta = Math.min(0.05, remaining);
               now += delta * 1000;
+              syncControls();
               gameEngine.step(now);
               remaining -= delta;
             }
@@ -262,7 +283,10 @@ export function GameCanvas({
         };
         window.__PIRATE_BATTLE_TEST__ = testBridge;
       } else {
-        app.ticker.add(() => gameEngine.step(performance.now()));
+        app.ticker.add(() => {
+          syncControls();
+          gameEngine.step(performance.now());
+        });
       }
 
       if (testMode) app.render();
@@ -292,16 +316,6 @@ export function GameCanvas({
     profileMode,
     testSeed,
   ]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      for (const [key, value] of Object.entries(controls.current)) {
-        engine.current?.setControl(key as keyof Controls, value);
-      }
-    }, 30);
-
-    return () => clearInterval(timer);
-  }, [controls]);
 
   return <div className="canvas" ref={host} role="region" aria-label="Pirate battle arena" />;
 }
