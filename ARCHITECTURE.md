@@ -14,7 +14,9 @@ The engine publishes a compact `GameSnapshot` for HUD updates. It does not put p
 
 ## Collision and combat
 
-The island is a circle and each ship/projectile is approximated by a circle. The checks are distance based: a proposed ship position is rejected if it overlaps the island; bullets are destroyed after one target hit, island hit, expiry or arena exit. A destroyed enemy is marked inactive before its view is destroyed, so it cannot fire or score again.
+The island is a circle and each ship/projectile is approximated by a circle. The checks are distance based: a proposed ship position is rejected if it overlaps the island; cannonballs are destroyed after one target hit, island hit, expiry or arena exit. A destroyed enemy is marked inactive before its view is destroyed, so it cannot fire or score again.
+
+Combat artwork is loaded once by `GameCanvas` before `GameEngine` starts. Cannonballs use the supplied `cannon_ball.png` sprite and keep the latest eight positions for a short Pixi graphics trail. Each damage event throws one or more crew sprites away from the ship; a small pseudo-height arc makes them appear to jump before they land with a water ripple. Ships gain one, two, then three animated fire sprites as health crosses 75%, 50%, and 25%. Destruction plays the three explosion frames in order. These temporary entities are advanced by the same delta-time simulation and are destroyed when they expire or when the game canvas is removed.
 
 All balance values are in `defaultConfig` and typed by `GameConfig`. `Options` persists only the two candidate-facing options and each match receives an immutable merged snapshot when it begins.
 
@@ -26,4 +28,4 @@ The selectable mock scenarios are normal, deliberate latency, and service error.
 
 ## Assets and accessibility
 
-Vite exposes the supplied `assets` folder as its public directory. The game uses the supplied ship and menu artwork; Pixi loads ship textures lazily and its visual primitives render water, island, health bars, cannonballs, and explosion feedback. The app is responsive for portrait mobile and desktop. Menus use native focusable controls, labels and live status text; keyboard gameplay listeners exist only on the game screen.
+Vite exposes the supplied `assets` folder as its public directory. The game uses supplied ship, cannonball, crew, fire, explosion, and menu artwork; Pixi draws the water, island, health bars, projectile trails, and splash ripples. The app is responsive for portrait mobile and desktop. Menus use native focusable controls, labels and live status text; keyboard gameplay listeners exist only on the game screen.
