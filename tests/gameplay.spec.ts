@@ -278,7 +278,7 @@ test('touch controls are visible and move the ship in mobile landscape', async (
   await advanceGame(page, 0.5);
   await page.mouse.up();
 
-  expect((await readGameState(page)).player.x).toBeGreaterThan(initial.player.x);
+  expect((await readGameState(page)).player.y).toBeLessThan(initial.player.y);
 });
 
 test('brief mobile taps trigger movement and all cannon controls', async ({ page, isMobile }) => {
@@ -304,15 +304,23 @@ test('brief mobile taps trigger movement and all cannon controls', async ({ page
   await tapJoystick(0.5, 0.15);
   await advanceGame(page, 0.1);
   const movedForward = await readGameState(page);
-  expect(movedForward.player.x).toBeGreaterThan(initial.player.x);
+  expect(movedForward.player.y).toBeLessThan(initial.player.y);
 
   await tapJoystick(0.5, 0.85);
   await advanceGame(page, 0.1);
-  expect((await readGameState(page)).player.x).toBeLessThan(movedForward.player.x);
+  expect((await readGameState(page)).player.y).toBeGreaterThan(movedForward.player.y);
 
   await tapJoystick(0.15, 0.5);
   await advanceGame(page, 0.1);
-  expect((await readGameState(page)).player.angle).toBeLessThan(0);
+  const movedLeft = await readGameState(page);
+  expect(movedLeft.player.x).toBeLessThan(initial.player.x);
+  expect(Math.abs(Math.abs(movedLeft.player.angle) - Math.PI)).toBeLessThan(0.01);
+
+  await tapJoystick(0.75, 0.25);
+  await advanceGame(page, 0.1);
+  const movedDiagonally = await readGameState(page);
+  expect(movedDiagonally.player.x).toBeGreaterThan(movedLeft.player.x);
+  expect(movedDiagonally.player.y).toBeLessThan(movedLeft.player.y);
 
   await tapCannon('Port broadside (Q)');
   await tapCannon('Front fire (Space)');

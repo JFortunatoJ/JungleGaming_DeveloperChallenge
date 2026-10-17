@@ -8,6 +8,7 @@ import type {
   EnemyKind,
   GameConfig,
   GameSnapshot,
+  MovementVector,
   PlayerWeapon,
 } from '../game/types';
 
@@ -16,6 +17,7 @@ let simulatedAssetFailureConsumed = false;
 type Props = {
   config: GameConfig;
   controls: React.MutableRefObject<Controls>;
+  joystickDirection: React.MutableRefObject<MovementVector>;
   fireRequests: React.MutableRefObject<PlayerWeapon[]>;
   onHud: (value: GameSnapshot) => void;
   onEnd: (reason: EndReason, score: number, duration: number) => void;
@@ -55,6 +57,7 @@ const createSeededRandom = (seed: number) => {
 export function GameCanvas({
   config,
   controls,
+  joystickDirection,
   fireRequests,
   onHud,
   onEnd,
@@ -254,6 +257,7 @@ export function GameCanvas({
         for (const [key, value] of Object.entries(controls.current)) {
           gameEngine.setControl(key as keyof Controls, value);
         }
+        gameEngine.setJoystickDirection(joystickDirection.current);
 
         for (const weapon of fireRequests.current.splice(0)) {
           gameEngine.firePlayerWeapon(weapon);

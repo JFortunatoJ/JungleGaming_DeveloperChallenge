@@ -7,6 +7,7 @@ import {
   type EndReason,
   type GameConfig,
   type GameSnapshot,
+  type MovementVector,
   type PlayerWeapon,
 } from './types';
 
@@ -195,6 +196,7 @@ export class GameEngine {
   readonly stage = new Container();
   private water!: TilingSprite;
   private controls: Controls = defaultControls();
+  private joystickDirection: MovementVector = { x: 0, y: 0 };
   private player!: Ship;
   private enemies: Ship[] = [];
   private sinkingShips: { ship: Ship; age: number }[] = [];
@@ -233,6 +235,12 @@ export class GameEngine {
 
   setControl(name: keyof Controls, value: boolean) {
     this.controls[name] = value;
+  }
+
+  setJoystickDirection(direction: MovementVector) {
+    const magnitude = Math.hypot(direction.x, direction.y);
+    const scale = magnitude > 1 ? 1 / magnitude : 1;
+    this.joystickDirection = { x: direction.x * scale, y: direction.y * scale };
   }
 
   firePlayerWeapon(weapon: PlayerWeapon) {
@@ -523,20 +531,34 @@ export class GameEngine {
 
   private movePlayer(dt: number) {
     const p = this.player;
-    setLoopingSound('ship_sailing_loop', this.controls.forward || this.controls.backward);
+    const joystickMagnitude = Math.hypot(this.joystickDirection.x, this.joystickDirection.y);
+    setLoopingSound(
+      'ship_sailing_loop',
+      joystickMagnitude > 0 || this.controls.forward || this.controls.backward,
+    );
 
-    if (this.controls.left) p.angle -= this.config.turnSpeed * dt;
-    if (this.controls.right) p.angle += this.config.turnSpeed * dt;
-
-    const movementDirection =
-      this.controls.forward === this.controls.backward ? 0 : this.controls.forward ? 1 : -0.65;
-
-    if (movementDirection !== 0) {
+    if (joystickMagnitude > 0) {
+      // The virtual stick controls screen-space movement directly, and the hull faces that way.
+      p.angle = Math.atan2(this.joystickDirection.y, this.joystickDirection.x);
       this.tryMove(
         p,
-        Math.cos(p.angle) * this.config.playerSpeed * dt * movementDirection,
-        Math.sin(p.angle) * this.config.playerSpeed * dt * movementDirection,
+        this.joystickDirection.x * this.config.playerSpeed * dt,
+        this.joystickDirection.y * this.config.playerSpeed * dt,
       );
+    } else {
+      if (this.controls.left) p.angle -= this.config.turnSpeed * dt;
+      if (this.controls.right) p.angle += this.config.turnSpeed * dt;
+
+      const movementDirection =
+        this.controls.forward === this.controls.backward ? 0 : this.controls.forward ? 1 : -0.65;
+
+      if (movementDirection !== 0) {
+        this.tryMove(
+          p,
+          Math.cos(p.angle) * this.config.playerSpeed * dt * movementDirection,
+          Math.sin(p.angle) * this.config.playerSpeed * dt * movementDirection,
+        );
+      }
     }
 
     if (this.controls.front) this.fire(p, 0, 'front');

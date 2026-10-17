@@ -12,6 +12,7 @@ export type Controls = {
 };
 
 export type PlayerWeapon = Extract<keyof Controls, 'front' | 'port' | 'starboard'>;
+export type MovementVector = { x: number; y: number };
 
 export type GameOptions = {
   sessionSeconds: number;

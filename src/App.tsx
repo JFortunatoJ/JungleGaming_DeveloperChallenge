@@ -35,6 +35,7 @@ import {
   type GameConfig,
   type GameOptions,
   type GameSnapshot,
+  type MovementVector,
   type MatchResult,
   type PlayerWeapon,
 } from './game/types';
@@ -94,6 +95,7 @@ export default function App() {
   );
 
   const controls = useRef(defaultControls());
+  const joystickDirection = useRef<MovementVector>({ x: 0, y: 0 });
   const fireRequests = useRef<PlayerWeapon[]>([]);
   const pendingReplayStarted = useRef(false);
   const queryClient = useQueryClient();
@@ -230,6 +232,7 @@ export default function App() {
     });
     setPaused(false);
     controls.current = defaultControls();
+    joystickDirection.current = { x: 0, y: 0 };
     fireRequests.current = [];
     setAssetLoad({ status: 'loading', progress: 0, message: '' });
     setGameCanvasKey((key) => key + 1);
@@ -248,6 +251,7 @@ export default function App() {
 
   const pauseGame = () => {
     controls.current = defaultControls();
+    joystickDirection.current = { x: 0, y: 0 };
     fireRequests.current = [];
     setPaused(true);
     setGameAudioPaused(true);
@@ -359,6 +363,7 @@ export default function App() {
 
     if (needsLandscape) {
       controls.current = defaultControls();
+      joystickDirection.current = { x: 0, y: 0 };
       fireRequests.current = [];
       setGameAudioPaused(true);
     } else if (!paused) {
@@ -494,6 +499,7 @@ export default function App() {
           key={gameCanvasKey}
           config={gameConfig}
           controls={controls}
+          joystickDirection={joystickDirection}
           fireRequests={fireRequests}
           onHud={setHud}
           onEnd={end}
@@ -551,7 +557,11 @@ export default function App() {
         </p>
 
         {assetLoad.status === 'ready' && (
-          <TouchControls controls={controls} fireRequests={fireRequests} />
+          <TouchControls
+            controls={controls}
+            joystickDirection={joystickDirection}
+            fireRequests={fireRequests}
+          />
         )}
 
         {paused && (
@@ -1173,9 +1183,11 @@ function PauseOverlay({
 
 function TouchControls({
   controls,
+  joystickDirection,
   fireRequests,
 }: {
   controls: React.MutableRefObject<Controls>;
+  joystickDirection: React.MutableRefObject<MovementVector>;
   fireRequests: React.MutableRefObject<PlayerWeapon[]>;
 }) {
   // Reutiliza os ícones do pacote de assets para manter os controles touch no estilo do jogo.
@@ -1200,9 +1212,10 @@ function TouchControls({
         window.clearTimeout(joystickReleaseTimer.current);
       }
       controls.current = defaultControls();
+      joystickDirection.current = { x: 0, y: 0 };
       fireRequests.current = [];
     },
-    [controls, fireRequests],
+    [controls, fireRequests, joystickDirection],
   );
 
   const releasePointer = (control: keyof Controls, pointerId: number) => {
@@ -1266,13 +1279,21 @@ function TouchControls({
     const y = deltaY * scale;
     const normalizedX = x / maxOffset;
     const normalizedY = y / maxOffset;
-    const inDeadZone = Math.hypot(normalizedX, normalizedY) < 0.2;
+    const magnitude = Math.hypot(normalizedX, normalizedY);
+    const deadZone = 0.2;
 
     setStickPosition({ x, y });
-    controls.current.left = !inDeadZone && normalizedX <= -0.35;
-    controls.current.right = !inDeadZone && normalizedX >= 0.35;
-    controls.current.forward = !inDeadZone && normalizedY <= -0.35;
-    controls.current.backward = !inDeadZone && normalizedY >= 0.35;
+    if (magnitude <= deadZone) {
+      joystickDirection.current = { x: 0, y: 0 };
+      return;
+    }
+
+    // Mantém a direção analógica (inclusive diagonais) e usa a distância do centro como velocidade.
+    const analogMagnitude = Math.min(1, (magnitude - deadZone) / (1 - deadZone));
+    joystickDirection.current = {
+      x: (normalizedX / magnitude) * analogMagnitude,
+      y: (normalizedY / magnitude) * analogMagnitude,
+    };
   };
 
   const releaseJoystick = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -1284,10 +1305,7 @@ function TouchControls({
     const elapsed = performance.now() - joystickPressStartedAt.current;
     const remainingPressTime = Math.max(0, 80 - elapsed);
     joystickReleaseTimer.current = window.setTimeout(() => {
-      controls.current.forward = false;
-      controls.current.backward = false;
-      controls.current.left = false;
-      controls.current.right = false;
+      joystickDirection.current = { x: 0, y: 0 };
       joystickReleaseTimer.current = null;
     }, remainingPressTime);
   };
@@ -1314,7 +1332,7 @@ function TouchControls({
       <button
         type="button"
         className="touch-joystick"
-        aria-label="Movement joystick. Drag up to move, down to reverse and sideways to steer."
+        aria-label="Movement joystick. Drag in any direction to move the ship that way."
         onPointerDown={(event) => {
           event.preventDefault();
           if (joystickPointer.current !== null) return;

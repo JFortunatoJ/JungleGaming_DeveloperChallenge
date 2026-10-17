@@ -34,13 +34,13 @@ Playwright uses installed Chrome or Edge when available and otherwise uses its m
 
 | Action | Keyboard | Mobile |
 | --- | --- | --- |
-| Move forward/reverse | `W` / `↑`, `S` / `↓` | Push the movement joystick up/down |
-| Turn left/right | `A` / `←`, `D` / `→` | Push the movement joystick left/right |
+| Move | `W` / `↑`, `S` / `↓` | Push the joystick in the direction you want to travel |
+| Turn left/right | `A` / `←`, `D` / `→` | The ship automatically points toward the joystick direction |
 | Fire forward | `Space` | Front cannon control |
 | Fire left/right broadsides | `Q` / `E` | Port/starboard cannon controls |
 | Pause/resume | `Escape` or HUD pause button | HUD pause button |
 
-Movement, rotation and firing can be combined. Mobile movement uses a drag joystick with forward, reverse and steering directions. The supported mobile game orientation is landscape; the game pauses in portrait, asks the player to rotate the device and requests an orientation lock when available. On mobile, Play requests browser fullscreen with navigation UI hidden; the pause menu can enter or exit fullscreen later. Browsers and operating systems may decline fullscreen or orientation lock, so the in-game orientation prompt remains the fallback.
+Movement, rotation and firing can be combined. On mobile, the joystick moves the ship directly along its screen-space direction (including diagonals), and the ship points the same way; pushing farther from the center increases movement speed. Keyboard controls retain separate turning and forward/reverse movement. The supported mobile game orientation is landscape; the game pauses in portrait, asks the player to rotate the device and requests an orientation lock when available. On mobile, Play requests browser fullscreen with navigation UI hidden; the pause menu can enter or exit fullscreen later. Browsers and operating systems may decline fullscreen or orientation lock, so the in-game orientation prompt remains the fallback.
 
 ## Gameplay configuration
 
