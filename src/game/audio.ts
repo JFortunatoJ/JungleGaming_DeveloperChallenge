@@ -125,4 +125,12 @@ export function stopGameAudio() {
     audio.pause();
     audio.currentTime = 0;
   }
+
+  // One-shot effects normally leave this set on `ended`. Stop and release any
+  // overlapping sounds at match teardown so a quick restart cannot retain them.
+  for (const audio of activeSounds) {
+    audio.pause();
+    audio.currentTime = 0;
+  }
+  activeSounds.clear();
 }

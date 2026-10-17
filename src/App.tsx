@@ -12,8 +12,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GameCanvas } from './components/GameCanvas';
 import { getHistory, getRanking, recordMatch } from './api/client';
 import { resetMockData } from './api/mocks';
+import {
+  defaultNetworkScenario,
+  networkScenarios,
+  type NetworkScenario,
+} from './api/contracts';
 import { playSound, setGameAudioPaused, startGameAudio, stopGameAudio } from './game/audio';
-import { loadLastResult, loadOptions, saveLastResult, saveOptions } from './game/storage';
+import {
+  loadLastResult,
+  loadOptions,
+  loadPendingMatches,
+  removePendingMatch,
+  saveLastResult,
+  saveOptions,
+  savePendingMatch,
+} from './game/storage';
 import {
   defaultConfig,
   defaultControls,
@@ -28,6 +41,7 @@ import {
 type Screen = 'menu' | 'options' | 'game' | 'result' | 'ranking' | 'history';
 type Tab = 'ranking' | 'history';
 type DeviceOrientation = { mobile: boolean; landscape: boolean };
+type AssetLoadState = { status: 'loading' | 'ready' | 'error'; progress: number; message: string };
 
 const labels: Record<keyof Controls, string> = {
   forward: 'Forward (W / ↑)',
@@ -64,11 +78,19 @@ export default function App() {
   const [paused, setPaused] = useState(false);
   const [pauseOptionsOpen, setPauseOptionsOpen] = useState(false);
   const [result, setResult] = useState<MatchResult | null>(loadLastResult);
+  const [pendingMatches, setPendingMatches] = useState(loadPendingMatches);
+  const [assetLoad, setAssetLoad] = useState<AssetLoadState>({
+    status: 'ready',
+    progress: 1,
+    message: '',
+  });
+  const [gameCanvasKey, setGameCanvasKey] = useState(0);
   const [deviceOrientation, setDeviceOrientation] = useState<DeviceOrientation>(() =>
     readDeviceOrientation(),
   );
 
   const controls = useRef(defaultControls());
+  const pendingReplayStarted = useRef(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -95,8 +117,41 @@ export default function App() {
     isError: saveFailed,
   } = useMutation({
     mutationFn: recordMatch,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['records'] }),
+    onSuccess: (_saved, submitted) => {
+      removePendingMatch(submitted.id);
+      setPendingMatches(loadPendingMatches());
+      void queryClient.invalidateQueries({ queryKey: ['records'] });
+    },
+    onError: (_error, submitted) => {
+      savePendingMatch(submitted);
+      setPendingMatches(loadPendingMatches());
+    },
   });
+
+  useEffect(() => {
+    if (pendingReplayStarted.current) return;
+    pendingReplayStarted.current = true;
+    loadPendingMatches().forEach((match) => saveMatch(match));
+  }, [saveMatch]);
+
+  const retryPendingMatches = () => loadPendingMatches().forEach((match) => saveMatch(match));
+
+  const updateAssetProgress = useCallback((progress: number) => {
+    setAssetLoad({ status: 'loading', progress, message: '' });
+  }, []);
+
+  const handleAssetsReady = useCallback(() => {
+    setAssetLoad({ status: 'ready', progress: 1, message: '' });
+  }, []);
+
+  const handleAssetError = useCallback((error: Error) => {
+    setAssetLoad({ status: 'error', progress: 0, message: error.message });
+  }, []);
+
+  const retryAssetLoading = () => {
+    setAssetLoad({ status: 'loading', progress: 0, message: '' });
+    setGameCanvasKey((key) => key + 1);
+  };
 
   const play = () => {
     if (deviceOrientation.mobile && window.screen.orientation?.lock) {
@@ -111,6 +166,8 @@ export default function App() {
     });
     setPaused(false);
     controls.current = defaultControls();
+    setAssetLoad({ status: 'loading', progress: 0, message: '' });
+    setGameCanvasKey((key) => key + 1);
     setScreen('game');
   };
 
@@ -125,13 +182,16 @@ export default function App() {
         : 'health_fill_green.png';
 
   const pauseGame = () => {
+    controls.current = defaultControls();
     setPaused(true);
     setGameAudioPaused(true);
+    playSound('game_pause');
   };
 
   const resumeGame = () => {
     setPaused(false);
     setGameAudioPaused(false);
+    playSound('game_resume');
   };
 
   const end = useCallback(
@@ -143,21 +203,26 @@ export default function App() {
         score,
         duration,
         reason,
-        configuration: options,
+        configuration: {
+          sessionSeconds: activeConfig.sessionSeconds,
+          spawnSeconds: activeConfig.spawnSeconds,
+        },
       };
 
       saveLastResult(match);
       setResult(match);
+      savePendingMatch(match);
+      setPendingMatches(loadPendingMatches());
       saveMatch(match);
-      playSound(reason === 'time' ? 'game_complete' : 'game_over');
       stopGameAudio();
+      playSound(reason === 'time' ? 'game_complete' : 'game_over');
       setScreen('result');
     },
-    [options, saveMatch],
+    [activeConfig, saveMatch],
   );
 
   useEffect(() => {
-    if (screen !== 'game') return;
+    if (screen !== 'game' || assetLoad.status !== 'ready') return;
 
     const down = (e: KeyboardEvent) => {
       const map: Record<string, keyof Controls> = {
@@ -173,7 +238,7 @@ export default function App() {
       };
 
       const key = map[e.key.toLowerCase()];
-      if (key) {
+      if (key && !paused) {
         e.preventDefault();
         controls.current[key] = true;
       }
@@ -217,7 +282,7 @@ export default function App() {
       window.removeEventListener('blur', blur);
       document.removeEventListener('visibilitychange', blur);
     };
-  }, [paused, screen]);
+  }, [assetLoad.status, paused, screen]);
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -344,12 +409,48 @@ export default function App() {
         </header>
 
         <GameCanvas
+          key={gameCanvasKey}
           config={gameConfig}
           controls={controls}
           onHud={setHud}
           onEnd={end}
+          onAssetProgress={updateAssetProgress}
+          onAssetsReady={handleAssetsReady}
+          onAssetError={handleAssetError}
           paused={paused || needsLandscape}
         />
+
+        {assetLoad.status === 'loading' && (
+          <div className="game-loading-overlay" role="status" aria-live="polite">
+            <section className="game-loading-panel">
+              <h1>Preparing the battle</h1>
+              <p>Loading ships, islands and effects…</p>
+              <progress aria-label="Loading game assets" max={1} value={assetLoad.progress} />
+              <span>{Math.round(assetLoad.progress * 100)}%</span>
+            </section>
+          </div>
+        )}
+
+        {assetLoad.status === 'error' && (
+          <div className="game-loading-overlay" role="alert">
+            <section className="game-loading-panel">
+              <h1>Battle assets could not be loaded</h1>
+              <p>{assetLoad.message}</p>
+              <div className="game-loading-actions">
+                <WoodButton onClick={retryAssetLoading}>Retry Loading</WoodButton>
+                <WoodButton
+                  variant="secondary"
+                  onClick={() => {
+                    stopGameAudio();
+                    setScreen('menu');
+                  }}
+                >
+                  Main Menu
+                </WoodButton>
+              </div>
+            </section>
+          </div>
+        )}
 
         {needsLandscape && (
           <div className="orientation-warning" role="alert" aria-live="assertive">
@@ -366,7 +467,7 @@ export default function App() {
           remaining{paused ? ', paused' : ''}
         </p>
 
-        <TouchControls controls={controls} />
+        {assetLoad.status === 'ready' && <TouchControls controls={controls} />}
 
         {paused && (
           <PauseOverlay
@@ -408,7 +509,9 @@ export default function App() {
         result={result}
         saving={isSaving}
         error={saveFailed}
+        pending={pendingMatches.some((match) => match.id === result.id)}
         play={play}
+        retry={() => saveMatch(result)}
         menu={() => {
           playSound('ui_back');
           setScreen('menu');
@@ -434,6 +537,10 @@ export default function App() {
   return (
     <Menu
       play={play}
+      pendingCount={pendingMatches.length}
+      retryPending={retryPendingMatches}
+      lastResult={result}
+      viewLastResult={() => setScreen('result')}
       options={() => {
         playSound('ui_open');
         setScreen('options');
@@ -452,11 +559,19 @@ export default function App() {
 
 function Menu({
   play,
+  pendingCount,
+  retryPending,
+  lastResult,
+  viewLastResult,
   options,
   ranking,
   history,
 }: {
   play: () => void;
+  pendingCount: number;
+  retryPending: () => void;
+  lastResult: MatchResult | null;
+  viewLastResult: () => void;
   options: () => void;
   ranking: () => void;
   history: () => void;
@@ -471,10 +586,22 @@ function Menu({
         />
         <p className="tagline">Set sail. Take command.</p>
 
+        <div className="menu-controls" aria-label="Controls">
+          <p><strong>Move:</strong> W / ↑ · <strong>Turn:</strong> A / ←, D / →</p>
+          <p><strong>Fire:</strong> Space · <strong>Broadsides:</strong> Q / E</p>
+          <p>Mobile: use the on-screen movement and cannon buttons.</p>
+        </div>
+
         <div className="main-actions">
           <WoodButton onClick={play}>Play</WoodButton>
           <WoodButton onClick={options}>Options</WoodButton>
         </div>
+
+        {lastResult && (
+          <button className="menu-latest-result" onClick={viewLastResult}>
+            Latest battle: {lastResult.score} points · View result
+          </button>
+        )}
 
         <div className="menu-flourish" aria-hidden="true">
           <img src="/png/default/ships/ship_1.png" alt="" />
@@ -489,6 +616,13 @@ function Menu({
             Match History
           </WoodButton>
         </div>
+
+        {pendingCount > 0 && (
+          <p className="pending-match-status" role="status">
+            {pendingCount} match {pendingCount === 1 ? 'is' : 'are'} waiting to sync.
+            <button type="button" onClick={retryPending}>Retry pending uploads</button>
+          </p>
+        )}
 
       </section>
       <NetworkControls />
@@ -512,14 +646,24 @@ function WoodButton({
   );
 }
 
-function Records({ kind }: { kind: Tab }) {
+function Records({ kind, configuration }: { kind: Tab; configuration: GameOptions }) {
   const [page, setPage] = useState(1);
 
   const query = useQuery({
-    queryKey: ['records', kind, page],
-    queryFn: () => (kind === 'ranking' ? getRanking(page) : getHistory(page)),
+    queryKey: [
+      'records',
+      kind,
+      page,
+      configuration.sessionSeconds,
+      configuration.spawnSeconds,
+    ],
+    queryFn: ({ signal }) =>
+      kind === 'ranking'
+        ? getRanking(page, configuration, signal)
+        : getHistory(page, signal),
     retry: 1,
-    staleTime: 10000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   if (query.isPending) return <p>Loading {kind}…</p>;
@@ -536,6 +680,11 @@ function Records({ kind }: { kind: Tab }) {
 
   return (
     <>
+      {query.isFetching && (
+        <p className="query-refresh-status" role="status">
+          Refreshing {kind}…
+        </p>
+      )}
       <div className="record-table-wrap">
         <table className="record-table">
           {kind === 'ranking' ? (
@@ -663,7 +812,7 @@ function LogScreen({
             : "Captain You · Your recent battles"}
         </p>
 
-        <Records kind={kind} />
+        <Records kind={kind} configuration={options} />
 
         <WoodButton className="log-home" onClick={onMainMenu}>
           Main Menu
@@ -674,9 +823,14 @@ function LogScreen({
 }
 
 function NetworkControls() {
-  const [scenario, setScenario] = useState(() => localStorage.getItem('pirate-battle/network-scenario') ?? 'normal');
+  const [scenario, setScenario] = useState<NetworkScenario>(() => {
+    const stored = localStorage.getItem('pirate-battle/network-scenario');
+    return networkScenarios.some((item) => item.value === stored)
+      ? (stored as NetworkScenario)
+      : defaultNetworkScenario;
+  });
 
-  const update = (value: string) => {
+  const update = (value: NetworkScenario) => {
     setScenario(value);
     localStorage.setItem('pirate-battle/network-scenario', value);
   };
@@ -684,10 +838,15 @@ function NetworkControls() {
   return (
     <label className="network">
       Network scenario
-      <select value={scenario} onChange={(event) => update(event.target.value)}>
-        <option value="normal">Normal</option>
-        <option value="slow">Slow (900 ms)</option>
-        <option value="error">Service unavailable</option>
+      <select
+        value={scenario}
+        onChange={(event) => update(event.target.value as NetworkScenario)}
+      >
+        {networkScenarios.map((item) => (
+          <option key={item.value} value={item.value}>
+            {item.label}
+          </option>
+        ))}
       </select>
       <button
         onClick={() => {
@@ -744,7 +903,7 @@ function OptionsForm({
 
   return (
     <>
-      <h1>Options</h1>
+      <h1 id="options-title">Options</h1>
       <div className="option-setting">
         <label htmlFor="session-seconds">Game session time</label>
         <div className="stepper">
@@ -836,9 +995,50 @@ function PauseOverlay({
   onBackToPause: () => void;
   onMainMenu: () => void;
 }) {
+  const dialogRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    const focusableSelector =
+      'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]';
+    const getFocusable = () =>
+      Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? []);
+
+    getFocusable()[0]?.focus();
+
+    const keepFocusInside = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      const focusable = getFocusable();
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', keepFocusInside);
+    return () => {
+      document.removeEventListener('keydown', keepFocusInside);
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+    };
+  }, [settingsOpen]);
+
   return (
     <div className="overlay pause-overlay">
-      <section className="pause-frame framed-panel">
+      <section
+        ref={dialogRef}
+        className="pause-frame framed-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label={settingsOpen ? 'Pause options' : 'Paused menu'}
+        aria-labelledby={settingsOpen ? 'options-title' : 'pause-title'}
+      >
         {settingsOpen ? (
           <OptionsForm
             options={options}
@@ -848,7 +1048,7 @@ function PauseOverlay({
           />
         ) : (
           <>
-            <h2>Paused</h2>
+            <h2 id="pause-title">Paused</h2>
             <p>Ready when you are.</p>
             <div className="pause-actions">
               <WoodButton onClick={onResume}>Resume</WoodButton>
@@ -922,13 +1122,17 @@ function Result({
   result,
   saving,
   error,
+  pending,
   play,
+  retry,
   menu,
 }: {
   result: MatchResult;
   saving: boolean;
   error: boolean;
+  pending: boolean;
   play: () => void;
+  retry: () => void;
   menu: () => void;
 }) {
   return (
@@ -942,12 +1146,13 @@ function Result({
         <p role="status">
           {saving
             ? 'Saving match…'
-            : error
+            : error || pending
               ? 'Match pending: the game remains available.'
               : 'Match recorded in history and ranking.'}
         </p>
 
         <div className="result-actions">
+          {error && <WoodButton onClick={retry}>Retry Save</WoodButton>}
           <WoodButton onClick={play}>Play Again</WoodButton>
           <WoodButton onClick={menu}>Main Menu</WoodButton>
         </div>

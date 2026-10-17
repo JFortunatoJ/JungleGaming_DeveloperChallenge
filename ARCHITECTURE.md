@@ -1,31 +1,49 @@
 # Architecture
 
-## Overview
+## Application boundaries
 
-`App.tsx` owns screen navigation, forms and the small UI state. `GameCanvas.tsx` is the lifecycle boundary between React and Pixi. It initializes Pixi once per match, attaches the stage from `GameEngine`, and always destroys Pixi resources when it unmounts. This matters in React Strict Mode, where effects may be mounted more than once during development.
+`src/App.tsx` owns screen navigation, options, the HUD snapshot, pause state and match-result submission. Menus, forms, logs and dialogs are React components; `src/styles.css` handles responsive layout and visual states. `src/components/GameCanvas.tsx` is the React/PixiJS lifecycle adapter. The rules and moving entities live in `src/game/GameEngine.ts`, which does not depend on React.
 
-## Game simulation
+This boundary keeps React out of the per-frame simulation: the engine publishes a compact HUD snapshot at most ten times per second and immediately on pause or match end. React therefore updates readable UI without reconciling every animation frame.
 
-`GameEngine` is deliberately framework-free. It owns ships, projectiles, cooldowns, spawns, collisions and elapsed active time. The Pixi ticker provides a timestamp; the engine converts it to seconds and caps an unusually long frame to avoid a jump after a stalled browser. Therefore movement is expressed as `speed * deltaTime`, rather than pixels per frame.
+## PixiJS startup and cleanup
 
-Input is a small shared object. Keyboard and touch buttons only change its booleans; the engine reads it every simulation step. Multiple booleans can be true, so movement and fire work together. The pause flag makes `step` a no-op, which freezes cooldowns, projectiles, spawns and clock together.
+`GameCanvas` initializes Pixi asynchronously, loads the complete combat texture set before starting the engine, reports progress/errors to React and supports a retry. The first Strict Mode effect checks its disposal flag after initialization so it cannot start duplicate asset loads after React's development-only mount/unmount cycle. Cleanup disconnects the resize observer, destroys the engine's display objects, detaches the ticker through application destruction and removes the canvas. Textures are reused through Pixi's shared `Assets` cache.
 
-The engine publishes a compact `GameSnapshot` for HUD updates. It does not put per-frame entity state in React. A production expansion should throttle this callback to 5–10 Hz; the current interface is intentionally small enough for a readable challenge implementation.
+The engine uses a 960×540 logical arena. Resize applies a uniform scale and letterboxing, preserving aspect ratio and keeping input/game coordinates in the same space. Pixi uses the device pixel ratio for the backing canvas. The supplied water and island tiles form the scenery; islands have explicit collision radii independent of their decorative tile silhouettes.
 
-## Collision and combat
+## Simulation, input and collisions
 
-The island is a circle and each ship/projectile is approximated by a circle. The checks are distance based: a proposed ship position is rejected if it overlaps the island; cannonballs are destroyed after one target hit, island hit, expiry or arena exit. A destroyed enemy is marked inactive before its view is destroyed, so it cannot fire or score again.
+`GameEngine.step(timestamp)` converts ticker time to seconds and caps unusually long frame deltas. Movement, rotation, cooldowns, projectiles, fire, impacts, crew, explosions and match time advance using delta time. A pause makes the simulation step a no-op. `src/App.tsx` maps keyboard and pointer/touch inputs into one set of control booleans, allowing movement and multiple attacks at once; listeners are installed only while the game screen is active. A hidden tab or lost focus pauses and requires an explicit resume.
 
-Combat artwork is loaded once by `GameCanvas` before `GameEngine` starts. Cannonballs use the supplied `cannon_ball.png` sprite and keep the latest eight positions for a short Pixi graphics trail. Each damage event throws one or more crew sprites away from the ship; a small pseudo-height arc makes them appear to jump before they land with a water ripple. Ships gain one, two, then three animated fire sprites as health crosses 75%, 50%, and 25%. Destruction plays the three explosion frames in order. These temporary entities are advanced by the same delta-time simulation and are destroyed when they expire or when the game canvas is removed.
+Ships and islands use circle approximations for collision checks. Ship moves are clamped to the arena and rejected when they overlap an island. Projectiles are removed on their first hit, island collision, expiry or arena exit; their separate front/port/starboard cooldowns prevent one weapon from blocking another. Chasers pursue and damage by impact. Shooters approach, then fire within range. Enemy route planning builds a visibility graph around inflated island circles and routes along sampled safe arcs when direct travel is blocked. Configured spawn points are filtered against the player, existing ships and island obstacles.
 
-All balance values are in `defaultConfig` and typed by `GameConfig`. `Options` persists only the two candidate-facing options and each match receives an immutable merged snapshot when it begins.
+An enemy is marked inactive immediately on defeat so it cannot collide, fire or score twice. Its matching defeated ship sprite remains for a short fade before its display objects are destroyed. Cannonballs use the supplied sprite and a tapered fading trail. Damage emits impact particles and crew-overboard sprites; low health adds animated fire; destruction plays the explosion frames. These temporary display entities have simulation lifetimes and are cleaned up on expiry or engine destruction.
 
-## Remote data and recovery
+Balance values are typed in `src/game/types.ts`. `defaultConfig` contains the spawn pattern/positions, health, movement, turning, damage, projectile speed/lifetime, cooldowns and Shooter range. Options persist only session duration and spawn interval. Starting a match merges those options into an immutable active snapshot, so edits affect subsequent matches rather than a match in progress.
 
-Axios is the only HTTP client. TanStack Query owns cache, retry, loading/error state and refetching for ranking/history. MSW intercepts `/api` in the browser; its handlers share the TypeScript contracts with the client and persist completed rows in local storage. Match IDs are client generated and POST is idempotent, so a retry cannot duplicate a record.
+## Local persistence and API data
 
-The selectable mock scenarios are normal, deliberate latency, and service error. A failed save remains represented by the Result screen and can be retried; it never blocks another match. Future hardening would store a queue of pending records, replay it at startup, and add deterministic seed/clock injection for fully automated combat tests.
+`src/game/storage.ts` validates and persists options, the last completed result and pending submissions in local storage. Abandoning a match navigates away without creating a result. A completed match is shown even if its network submission fails; the user may retry, start another match or return later. At startup, pending records are replayed. Match IDs are idempotency keys.
 
-## Assets and accessibility
+The API layer is split into `src/api/contracts.ts`, `client.ts`, `mocks.ts` and `browser.ts`. Axios owns HTTP requests; TanStack Query owns ranking/history cache, status, retry and invalidation. MSW intercepts `/api/ranking`, `/api/history` and `/api/matches` in both development and the published static build. Fixed fixtures make the ranking reproducible; only the current player appears in match history. Ranking filters by session/spawn configuration and sorts by score, completion time and ID for deterministic ties. A confirmed submission is visible to both queries after invalidation.
 
-Vite exposes the supplied `assets` folder as its public directory. The game uses supplied ship, cannonball, crew, fire, explosion, and menu artwork; Pixi draws the water, island, health bars, projectile trails, and splash ripples. The app is responsive for portrait mobile and desktop. Menus use native focusable controls, labels and live status text; keyboard gameplay listeners exist only on the game screen.
+Network scenarios are selectable in the menu: normal, empty, slow, variable latency, out-of-order, timeout, connection error, HTTP 400/503, ranking-only failure, history-only failure and timeout-after-save. The latter commits once before its first response times out; retry/reload returns the existing record instead of duplicating it. Reset clears mock records, timed-out request markers and pending submissions.
+
+## Accessibility, mobile and test seams
+
+React UI uses semantic buttons, labeled controls, progress/status and alert regions, keyboard focus, and focus management in dialogs. An off-screen semantic status exposes score, time and health without per-frame announcements. Touch controls share the same input state as keyboard controls. On mobile, the supported orientation is landscape and an accessible prompt covers gameplay in portrait; orientation lock is requested where supported but browsers may refuse it.
+
+The development-only `?test=1&seed=731` bridge exposes a read-only simulation snapshot, seeded randomness, deterministic time advancement and a way for E2E tests to place an enemy while still exercising real game inputs and combat rules. The one-shot `&failAssetsOnce=1` parameter only simulates an asset-load error to test the accessible retry state. Neither hook is included in the normal production build. The separate `build:profile` mode exposes only a read-only snapshot for the opt-in three-minute performance test; it is not used for deployment.
+
+## Known tradeoffs
+
+- Collision shapes are circles, not pixel-perfect hull polygons. Island art can extend beyond its conservative circular collision boundary.
+- Pathfinding is a small graph search over sampled island arcs, appropriate for the fixed arena rather than a general navigation library.
+- Ranking and history are a browser-local simulation with shared fixtures, not a server-backed multi-user service; clearing site data clears local records.
+- Orientation lock is a browser request, not a guarantee. The portrait prompt remains available when it is unsupported or denied.
+- The initial Pixi bundle is larger than the typical UI bundle because Pixi rendering modules are included together; inspect the build output before adding more rendering features.
+
+## Validation
+
+`npm run typecheck`, `npm run lint`, `npm run build` and `npm run test:e2e` are the project checks. Playwright runs desktop Chromium and touch-enabled mobile landscape tests, writes an HTML report under `reports/playwright/` and saves failure traces/screenshots under `reports/test-results/`. The three visual baselines are versioned under `tests/visual.spec.ts-snapshots/`. `build:profile` plus `test:e2e:performance` measures the optimized game for three minutes, captures frame and entity metrics, checks heap usage after five cleanup cycles, and writes JSON/HTML results under `reports/`.

@@ -1,0 +1,462 @@
+{
+  "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.8078.4 Safari/537.36",
+  "browserVersion": "155.0.8059.84",
+  "runtime": "v24.13.0",
+  "platform": "Windows_NT 10.0.26200",
+  "processor": "AMD Ryzen 5 2600 Six-Core Processor            ",
+  "logicalProcessors": 12,
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "devicePixelRatio": 1,
+  "match": {
+    "id": "9ff3a53d-d45e-4d01-8360-dcaf3445666c",
+    "playerId": "You",
+    "completedAt": "2026-10-17T19:32:06.807Z",
+    "score": 3,
+    "duration": 180,
+    "reason": "time",
+    "configuration": {
+      "sessionSeconds": 180,
+      "spawnSeconds": 30
+    }
+  },
+  "frameMetrics": {
+    "durationMs": 180016.4,
+    "frameCount": 10789,
+    "averageFps": 59.93342828764491,
+    "p95FrameMs": 16.80000000000291,
+    "entitySamples": [
+      {
+        "elapsed": 5.0145,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 7,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 10.0193,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 6,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 15.0241,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 4,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 20.0289,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 12,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 25.0337,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 12,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 30.0385,
+        "counts": {
+          "activeShips": 2,
+          "sinkingShips": 0,
+          "projectiles": 4,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 35.0435,
+        "counts": {
+          "activeShips": 2,
+          "sinkingShips": 0,
+          "projectiles": 2,
+          "crew": 1,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 8
+        }
+      },
+      {
+        "elapsed": 40.048199999999994,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 1,
+          "projectiles": 10,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 45.053,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 7,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 50.057900000000004,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 5,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 55.0627,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 3,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 60.0675,
+        "counts": {
+          "activeShips": 2,
+          "sinkingShips": 0,
+          "projectiles": 2,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 65.0723,
+        "counts": {
+          "activeShips": 2,
+          "sinkingShips": 0,
+          "projectiles": 4,
+          "crew": 1,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 70.07719999999999,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 1,
+          "projectiles": 6,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 2,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 75.082,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 5,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 80.0868,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 6,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 85.0916,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 11,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 90.0965,
+        "counts": {
+          "activeShips": 2,
+          "sinkingShips": 0,
+          "projectiles": 4,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 95.10130000000001,
+        "counts": {
+          "activeShips": 2,
+          "sinkingShips": 0,
+          "projectiles": 7,
+          "crew": 1,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 6
+        }
+      },
+      {
+        "elapsed": 100.10610000000001,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 1,
+          "projectiles": 5,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 105.111,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 7,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 110.1157,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 9,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 115.12060000000001,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 4,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 120.1254,
+        "counts": {
+          "activeShips": 2,
+          "sinkingShips": 0,
+          "projectiles": 4,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 125.1303,
+        "counts": {
+          "activeShips": 2,
+          "sinkingShips": 0,
+          "projectiles": 8,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 130.1351,
+        "counts": {
+          "activeShips": 2,
+          "sinkingShips": 0,
+          "projectiles": 7,
+          "crew": 1,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 135.13989999999998,
+        "counts": {
+          "activeShips": 2,
+          "sinkingShips": 0,
+          "projectiles": 6,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 140.1447,
+        "counts": {
+          "activeShips": 2,
+          "sinkingShips": 0,
+          "projectiles": 1,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 145.1495,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 8,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 150.15439999999998,
+        "counts": {
+          "activeShips": 2,
+          "sinkingShips": 0,
+          "projectiles": 4,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 155.1592,
+        "counts": {
+          "activeShips": 2,
+          "sinkingShips": 0,
+          "projectiles": 2,
+          "crew": 1,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 160.164,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 1,
+          "projectiles": 5,
+          "crew": 3,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 165.16879999999998,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 7,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 170.17370000000003,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 9,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      },
+      {
+        "elapsed": 175.17839999999998,
+        "counts": {
+          "activeShips": 1,
+          "sinkingShips": 0,
+          "projectiles": 4,
+          "crew": 0,
+          "animatedEffects": 0,
+          "splashes": 0,
+          "impactParticles": 0
+        }
+      }
+    ]
+  },
+  "heapAfterMatch": 15855348,
+  "heapAfterEachCleanupCycle": [
+    16077328,
+    16319060,
+    16479768,
+    16645388,
+    16789328
+  ],
+  "heapGrowthAcrossFiveCycles": 712000
+}

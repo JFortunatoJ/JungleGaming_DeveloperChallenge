@@ -17,12 +17,15 @@ const client = new QueryClient({
   },
 });
 
-worker.start().finally(() =>
-  createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
-      <QueryClientProvider client={client}>
-        <App />
-      </QueryClientProvider>
-    </React.StrictMode>,
-  ),
-);
+void worker
+  .start({ onUnhandledFrame: 'bypass' })
+  .catch(() => undefined)
+  .finally(() => {
+    createRoot(document.getElementById('root')!).render(
+      <React.StrictMode>
+        <QueryClientProvider client={client}>
+          <App />
+        </QueryClientProvider>
+      </React.StrictMode>,
+    );
+  });

@@ -115,6 +115,42 @@ select:focus-visible {
   text-transform: uppercase;
 }
 
+.menu-controls {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0 0 0.65rem;
+  color: #e8d6b3;
+  font-size: clamp(0.68rem, 0.9vw, 0.78rem);
+  line-height: 1.35;
+  text-align: center;
+}
+
+.menu-controls p {
+  margin: 0;
+}
+
+.menu-controls strong {
+  color: #ffe5ae;
+}
+
+.menu-latest-result {
+  margin: 0.1rem 0 0.35rem;
+  padding: 0.2rem 0.45rem;
+  border: 0;
+  background: transparent;
+  color: #ffe5ae;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.74rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.menu-latest-result:focus-visible {
+  outline: 2px solid #fff1a8;
+  outline-offset: 2px;
+}
+
 .main-actions,
 .pause-actions,
 .form-actions,
@@ -221,6 +257,29 @@ select:focus-visible {
   flex: 1 1 0;
   padding-inline: 0.85rem;
   font-size: clamp(0.62rem, 0.9vw, 0.82rem);
+}
+
+.pending-match-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.45rem 0 0;
+  color: #ffe5ae;
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.pending-match-status button {
+  padding: 0.2rem 0.45rem;
+  border: 1px solid #d5ad63;
+  border-radius: 4px;
+  background: #17374d;
+  color: #f5e3b4;
+  cursor: pointer;
+  font: inherit;
+  text-transform: uppercase;
 }
 
 .network {
@@ -751,6 +810,61 @@ select:focus-visible {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.game-loading-overlay {
+  position: absolute;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: #061b2ab8;
+  inset: 0;
+}
+
+.game-loading-panel {
+  display: grid;
+  width: min(92vw, 440px);
+  justify-items: center;
+  gap: 0.75rem;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  border: 1px solid #d5aa5a;
+  border-radius: 14px;
+  background: #10334bea;
+  color: #f5e3b4;
+  text-align: center;
+  box-shadow: 0 12px 40px #00111dcc;
+}
+
+.game-loading-panel h1 {
+  margin: 0;
+  color: #ffe8b4;
+  font-size: clamp(1.2rem, 4vw, 1.65rem);
+  text-transform: uppercase;
+}
+
+.game-loading-panel p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.game-loading-panel progress {
+  width: min(78vw, 320px);
+  accent-color: #e9ae48;
+}
+
+.game-loading-actions {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.game-loading-actions .wood-button {
+  width: min(48%, 190px);
+  padding-inline: 0.55rem;
+  font-size: 0.75rem;
 }
 
 .touch {
@@ -1424,6 +1538,17 @@ select:focus-visible {
     font-size: clamp(0.62rem, 2.5vw, 0.82rem);
   }
 
+  .menu-screen .menu-controls {
+    gap: 0.1rem;
+    margin-bottom: 0.35rem;
+    font-size: clamp(0.56rem, 2.2vw, 0.68rem);
+  }
+
+  .menu-screen .menu-latest-result {
+    margin-block: 0.1rem 0.3rem;
+    font-size: 0.66rem;
+  }
+
   .menu-screen .menu-flourish {
     min-height: 0;
     margin: 0.5rem 0;
@@ -1520,5 +1645,66 @@ select:focus-visible {
   *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Keep the compact landscape menu in normal flow instead of letting its footer overlap actions. */
+@media (orientation: landscape) and (max-height: 600px) {
+  .menu-screen .menu-frame {
+    justify-content: space-between;
+    gap: 0.15rem;
+    padding: 0.6rem clamp(1.5rem, 6vw, 4rem);
+  }
+
+  .menu-screen .game-logo,
+  .menu-screen .tagline,
+  .menu-screen .menu-controls,
+  .menu-screen .main-actions,
+  .menu-screen .menu-latest-result,
+  .menu-screen .menu-flourish,
+  .menu-screen .menu-logs {
+    flex: 0 0 auto;
+  }
+
+  .menu-screen .game-logo {
+    max-height: 16dvh;
+    margin-bottom: 0.1rem;
+  }
+
+  .menu-screen .tagline {
+    margin: 0.05rem 0 0.25rem;
+  }
+
+  .menu-screen .menu-controls {
+    margin-bottom: 0.1rem;
+  }
+
+  .menu-screen .menu-latest-result {
+    position: relative;
+    z-index: 1;
+    margin: 0;
+    line-height: 1.15;
+  }
+
+  .menu-screen .menu-flourish {
+    display: flex;
+    min-height: 0;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0.1rem 0;
+    pointer-events: none;
+  }
+
+  .menu-screen .menu-flourish img {
+    width: 18px;
+    height: 24px;
+  }
+
+  .menu-screen .menu-flourish p {
+    font-size: 0.62rem;
+  }
+
+  .menu-screen .menu-logs {
+    margin-top: 0;
   }
 }

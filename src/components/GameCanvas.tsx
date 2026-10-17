@@ -2,20 +2,73 @@ import { Application, Assets, Texture } from 'pixi.js';
 import { useEffect, useRef } from 'react';
 
 import { GameEngine, type GameTextures } from '../game/GameEngine';
-import type { Controls, EndReason, GameConfig, GameSnapshot } from '../game/types';
+import type { Controls, EndReason, EnemyKind, GameConfig, GameSnapshot } from '../game/types';
+
+let simulatedAssetFailureConsumed = false;
 
 type Props = {
   config: GameConfig;
   controls: React.MutableRefObject<Controls>;
   onHud: (value: GameSnapshot) => void;
   onEnd: (reason: EndReason, score: number, duration: number) => void;
+  onAssetProgress: (progress: number) => void;
+  onAssetsReady: () => void;
+  onAssetError: (error: Error) => void;
   paused: boolean;
 };
 
+type GameTestBridge = {
+  advance: (seconds: number) => void;
+  spawnEnemy: (kind: EnemyKind, x: number, y: number) => string;
+  setControl: (control: keyof Controls, pressed: boolean) => void;
+  snapshot: () => ReturnType<GameEngine['getDebugSnapshot']>;
+};
+
+type GameProfileBridge = {
+  snapshot: () => ReturnType<GameEngine['getDebugSnapshot']>;
+};
+
+declare global {
+  interface Window {
+    __PIRATE_BATTLE_TEST__?: GameTestBridge;
+    __PIRATE_BATTLE_PROFILE__?: GameProfileBridge;
+  }
+}
+
+const createSeededRandom = (seed: number) => {
+  let state = seed >>> 0;
+  return () => {
+    state = (1664525 * state + 1013904223) >>> 0;
+    return state / 0x1_0000_0000;
+  };
+};
+
 /** This adapter is deliberately thin: it creates/destroys Pixi and forwards commands to the framework-free engine. */
-export function GameCanvas({ config, controls, onHud, onEnd, paused }: Props) {
+export function GameCanvas({
+  config,
+  controls,
+  onHud,
+  onEnd,
+  onAssetProgress,
+  onAssetsReady,
+  onAssetError,
+  paused,
+}: Props) {
   const host = useRef<HTMLDivElement>(null);
   const engine = useRef<GameEngine | null>(null);
+  const pausedRef = useRef(paused);
+  const testNow = useRef(performance.now());
+  const testParams = new URLSearchParams(window.location.search);
+  const testMode = import.meta.env.DEV && testParams.get('test') === '1';
+  const profileMode = import.meta.env.VITE_ENABLE_GAME_PROFILE === 'true';
+  const testSeed = Number(testParams.get('seed') ?? 1);
+
+  useEffect(() => {
+    const now = performance.now();
+    pausedRef.current = paused;
+    if (testMode) testNow.current = now;
+    engine.current?.setPaused(paused, now);
+  }, [paused, testMode]);
 
   useEffect(() => {
     // `Application.init` is asynchronous. React Strict Mode deliberately mounts, unmounts,
@@ -23,8 +76,11 @@ export function GameCanvas({ config, controls, onHud, onEnd, paused }: Props) {
     // Only destroy the application *after* init has completed.
     let disposed = false;
     let initialized = false;
+    let appDestroyed = false;
     let app: Application | null = null;
     let localEngine: GameEngine | null = null;
+    let testBridge: GameTestBridge | null = null;
+    let profileBridge: GameProfileBridge | null = null;
     const resizeObserver = new ResizeObserver(([entry]) => {
       localEngine?.resize(entry.contentRect.width, entry.contentRect.height);
     });
@@ -33,7 +89,14 @@ export function GameCanvas({ config, controls, onHud, onEnd, paused }: Props) {
     // Do not use `engine.current` here: an older Strict Mode effect must never destroy
     // the engine created by a newer effect that has already replaced the ref.
     const dispose = () => {
-      if (!initialized || !app) return;
+      if (!initialized || !app || appDestroyed) return;
+      appDestroyed = true;
+      if (testBridge && window.__PIRATE_BATTLE_TEST__ === testBridge) {
+        delete window.__PIRATE_BATTLE_TEST__;
+      }
+      if (profileBridge && window.__PIRATE_BATTLE_PROFILE__ === profileBridge) {
+        delete window.__PIRATE_BATTLE_PROFILE__;
+      }
       localEngine?.destroy();
       if (engine.current === localEngine) engine.current = null;
       localEngine = null;
@@ -50,11 +113,26 @@ export function GameCanvas({ config, controls, onHud, onEnd, paused }: Props) {
         autoDensity: true,
       });
       initialized = true;
+      if (testMode) app.ticker.stop();
 
-      // Pixi v8 does not turn an arbitrary URL into a ready Texture synchronously. Loading here
-      // also gives this boundary one clear place to add a progress/error UI in a later iteration.
+      if (disposed) {
+        dispose();
+        return;
+      }
+
+      // This one-shot failure hook makes the loading/retry UI reproducible in E2E tests.
+      if (
+        testMode &&
+        testParams.get('failAssetsOnce') === '1' &&
+        !simulatedAssetFailureConsumed
+      ) {
+        simulatedAssetFailureConsumed = true;
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+        throw new Error('Simulated asset request failure.');
+      }
+
       // Keep all combat textures in one load step so no ship can enter combat before its effects
-      // are ready. The slices below follow the same order as this list.
+      // are ready. Progress and errors are forwarded to React for an accessible loading screen.
       const islandTileIds = [
         6, 7, 8, 9, 22, 23, 24, 25, 38, 39, 40, 41, 54, 55, 56, 57,
       ];
@@ -83,8 +161,15 @@ export function GameCanvas({ config, controls, onHud, onEnd, paused }: Props) {
         '/png/default/effects/explosion_2.png',
         '/png/default/effects/explosion_3.png',
       ];
+      let loadedCount = 0;
+      onAssetProgress(0);
       const loadedTextures = await Promise.all(
-        assetUrls.map((url) => Assets.load<Texture>(url)),
+        assetUrls.map(async (url) => {
+          const texture = await Assets.load<Texture>(url);
+          loadedCount += 1;
+          if (!disposed) onAssetProgress(loadedCount / assetUrls.length);
+          return texture;
+        }),
       );
 
       if (disposed) {
@@ -141,26 +226,72 @@ export function GameCanvas({ config, controls, onHud, onEnd, paused }: Props) {
         fire: effectTextures.slice(6, 8),
         explosions: effectTextures.slice(8, 11),
       };
-      const gameEngine = (localEngine = new GameEngine(config, onHud, onEnd, textures));
+      const random = testMode ? createSeededRandom(testSeed) : undefined;
+      const gameEngine = (localEngine = new GameEngine(config, onHud, onEnd, textures, random));
       gameEngine.resize(host.current!.clientWidth, host.current!.clientHeight);
       engine.current = gameEngine;
       app.stage.addChild(gameEngine.stage);
-      app.ticker.add(() => gameEngine.step(performance.now()));
-      gameEngine.start(performance.now());
+      if (profileMode) {
+        profileBridge = { snapshot: () => gameEngine.getDebugSnapshot() };
+        window.__PIRATE_BATTLE_PROFILE__ = profileBridge;
+      }
+      const startNow = performance.now();
+      testNow.current = startNow;
+      gameEngine.setPaused(pausedRef.current, startNow);
+      gameEngine.start(startNow);
+
+      if (testMode) {
+        testBridge = {
+          setControl: (control, pressed) => gameEngine.setControl(control, pressed),
+          spawnEnemy: (kind, x, y) => gameEngine.spawnEnemyForTest(kind, x, y),
+          snapshot: () => gameEngine.getDebugSnapshot(),
+          advance: (seconds) => {
+            let remaining = Math.max(0, seconds);
+            let now = testNow.current;
+
+            while (remaining > 0) {
+              const delta = Math.min(0.05, remaining);
+              now += delta * 1000;
+              gameEngine.step(now);
+              remaining -= delta;
+            }
+
+            testNow.current = now;
+            app?.render();
+          },
+        };
+        window.__PIRATE_BATTLE_TEST__ = testBridge;
+      } else {
+        app.ticker.add(() => gameEngine.step(performance.now()));
+      }
+
+      if (testMode) app.render();
+      onAssetsReady();
     };
 
-    void boot();
+    void boot().catch((cause: unknown) => {
+      if (disposed) return;
+      const error = cause instanceof Error ? cause : new Error('Unknown asset loading error');
+      onAssetError(error);
+      dispose();
+    });
 
     return () => {
       disposed = true;
       resizeObserver.disconnect();
       dispose();
     };
-  }, [config, onHud, onEnd]);
-
-  useEffect(() => {
-    engine.current?.setPaused(paused);
-  }, [paused]);
+  }, [
+    config,
+    onHud,
+    onEnd,
+    onAssetProgress,
+    onAssetsReady,
+    onAssetError,
+    testMode,
+    profileMode,
+    testSeed,
+  ]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -172,5 +303,5 @@ export function GameCanvas({ config, controls, onHud, onEnd, paused }: Props) {
     return () => clearInterval(timer);
   }, [controls]);
 
-  return <div className="canvas" ref={host} aria-label="Pirate battle arena" />;
+  return <div className="canvas" ref={host} role="region" aria-label="Pirate battle arena" />;
 }

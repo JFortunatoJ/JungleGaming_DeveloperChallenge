@@ -22,7 +22,7 @@ type Ship = {
   healthBar: Container;
   hull: Sprite;
   healthFill: Sprite;
-  shotAt: number;
+  shotAt: Record<'front' | 'port' | 'starboard', number>;
   alive: boolean;
   fires: Sprite[];
 };
@@ -91,16 +91,15 @@ export type GameTextures = {
   explosions: Texture[];
 };
 
-const W = 960,
-  H = 540,
-  islands = [
-    { x: 480, y: 270, r: 72 },
-    { x: 280, y: 120, r: 44 },
-    { x: 710, y: 390, r: 50 },
-  ],
-  shipScale = 0.42,
-  shipCollisionRadius = 28,
-  enemyShotCooldown = 1.2;
+const W = 960;
+const H = 540;
+const islands = [
+  { x: 480, y: 270, r: 72 },
+  { x: 280, y: 120, r: 44 },
+  { x: 710, y: 390, r: 50 },
+];
+const shipScale = 0.42;
+const shipCollisionRadius = 28;
 
 const distance = (a: { x: number; y: number }, b: { x: number; y: number }) =>
   Math.hypot(a.x - b.x, a.y - b.y);
@@ -207,7 +206,14 @@ export class GameEngine {
   private running = true;
   private paused = false;
   private previous = 0;
+  private hudPublishClock = 0;
   private score = 0;
+  private shotCounts: Record<'front' | 'port' | 'starboard' | 'enemy', number> = {
+    front: 0,
+    port: 0,
+    starboard: 0,
+    enemy: 0,
+  };
   private finishCountdown = 0;
   private enemySpawnCount = 0;
   private timeWarningPlayed = false;
@@ -217,6 +223,7 @@ export class GameEngine {
     private readonly onHud: (s: GameSnapshot) => void,
     private readonly onEnd: (reason: EndReason, score: number, duration: number) => void,
     private readonly textures: GameTextures,
+    private readonly random: () => number = Math.random,
   ) {
     this.drawArena();
     this.createPlayer();
@@ -226,10 +233,10 @@ export class GameEngine {
     this.controls[name] = value;
   }
 
-  setPaused(value: boolean) {
+  setPaused(value: boolean, now = performance.now()) {
     this.paused = value;
-    this.previous = performance.now();
-    this.publish();
+    this.previous = now;
+    this.publish(true);
   }
 
   togglePause() {
@@ -249,11 +256,64 @@ export class GameEngine {
 
   resize(width: number, height: number) {
     if (width <= 0 || height <= 0) return;
-    this.stage.scale.set(width / W, height / H);
+    const scale = Math.min(width / W, height / H);
+    this.stage.scale.set(scale);
+    this.stage.position.set((width - W * scale) / 2, (height - H * scale) / 2);
   }
 
   destroy() {
     this.stage.destroy({ children: true });
+  }
+
+  /** Read-only state inspection used by development E2E and profiling tools. */
+  getDebugSnapshot() {
+    return {
+      elapsed: this.elapsed,
+      score: this.score,
+      paused: this.paused,
+      running: this.running,
+      player: {
+        x: this.player.x,
+        y: this.player.y,
+        angle: this.player.angle,
+        health: this.player.health,
+        alive: this.player.alive,
+      },
+      enemies: this.enemies.map(({ id, kind, x, y, angle, health, alive }) => ({
+        id,
+        kind,
+        x,
+        y,
+        angle,
+        health,
+        alive,
+      })),
+      projectiles: this.bullets.map(({ x, y, vx, vy, fromPlayer }) => ({
+        x,
+        y,
+        vx,
+        vy,
+        fromPlayer,
+      })),
+      entityCounts: {
+        activeShips: Number(this.player.alive) + this.enemies.filter((ship) => ship.alive).length,
+        sinkingShips: this.sinkingShips.length,
+        projectiles: this.bullets.length,
+        crew: this.crewMembers.length,
+        animatedEffects: this.animatedEffects.length,
+        splashes: this.splashEffects.length,
+        impactParticles: this.impactParticles.length,
+      },
+      shotCounts: { ...this.shotCounts },
+      arena: { width: W, height: H, islands: islands.map(({ x, y, r }) => ({ x, y, r })) },
+    };
+  }
+
+  /** Arrange a deterministic test scene while preserving the normal enemy update and combat rules. */
+  spawnEnemyForTest(kind: EnemyKind, x: number, y: number) {
+    const enemy = this.spawnShip(kind, x, y);
+    this.enemies.push(enemy);
+    return enemy.id;
   }
 
   private drawArena() {
@@ -357,7 +417,11 @@ export class GameEngine {
       healthBar,
       hull,
       healthFill,
-      shotAt: 0,
+      shotAt: {
+        front: Number.NEGATIVE_INFINITY,
+        port: Number.NEGATIVE_INFINITY,
+        starboard: Number.NEGATIVE_INFINITY,
+      },
       alive: true,
       fires: [],
     };
@@ -392,6 +456,8 @@ export class GameEngine {
   }
 
   private update(dt: number) {
+    this.hudPublishClock += dt;
+
     // Keep the final hit effects visible briefly before changing to the result screen.
     if (!this.player.alive) {
       this.updateSinkingShips(dt);
@@ -447,25 +513,30 @@ export class GameEngine {
       );
     }
 
-    if (this.controls.front) this.fire(p, 0);
-    if (this.controls.port) this.fire(p, -Math.PI / 2);
-    if (this.controls.starboard) this.fire(p, Math.PI / 2);
+    if (this.controls.front) this.fire(p, 0, 'front');
+    if (this.controls.port) this.fire(p, -Math.PI / 2, 'port');
+    if (this.controls.starboard) this.fire(p, Math.PI / 2, 'starboard');
 
     this.renderShip(p);
   }
 
   private spawnEnemy() {
-    const candidates = [
-      [850, 90],
-      [840, 450],
-      [110, 90],
-      [100, 450],
-    ];
+    const point = this.config.spawnPoints.find(
+      ({ x, y }) =>
+        distance({ x, y }, this.player) >= this.config.spawnMinimumDistance &&
+        this.enemies.every(
+          (enemy) => distance({ x, y }, enemy) >= this.config.spawnMinimumEnemyDistance,
+        ) &&
+        islands.every(
+          (obstacle) =>
+            distance({ x, y }, obstacle) > obstacle.r + shipCollisionRadius,
+        ),
+    );
+    if (!point || this.config.spawnPattern.length === 0) return;
 
-    const point = candidates.find(([x, y]) => distance({ x, y }, this.player) > 360)!;
-    const kind = this.enemySpawnCount % 2 ? 'shooter' : 'chaser';
+    const kind = this.config.spawnPattern[this.enemySpawnCount % this.config.spawnPattern.length];
     this.enemySpawnCount += 1;
-    this.enemies.push(this.spawnShip(kind, point[0], point[1]));
+    this.enemies.push(this.spawnShip(kind, point.x, point.y));
   }
 
   private updateEnemy(enemy: Ship, dt: number) {
@@ -489,7 +560,7 @@ export class GameEngine {
 
     const d = distance(enemy, this.player);
 
-    if (d > (enemy.kind === 'shooter' ? this.config.shooterRange : shipCollisionRadius + 10)) {
+    if (d > (enemy.kind === 'shooter' ? this.config.shooterRange : this.config.chaserCollisionRange)) {
       this.tryMove(
         enemy,
         Math.cos(enemy.angle) * this.config.enemySpeed * dt,
@@ -498,9 +569,9 @@ export class GameEngine {
     }
 
     if (enemy.kind === 'shooter' && d <= this.config.shooterRange) this.fire(enemy, 0);
-    if (enemy.kind === 'chaser' && d < shipCollisionRadius + 10) {
+    if (enemy.kind === 'chaser' && d < this.config.chaserCollisionRange) {
       playSound('ship_collision');
-      this.damage(this.player, 18);
+      this.damage(this.player, this.config.chaserCollisionDamage);
       this.throwCrew(enemy, 2);
       this.kill(enemy, false);
       return;
@@ -531,31 +602,43 @@ export class GameEngine {
     if (isSafe(ship.x, y)) ship.y = y;
   }
 
-  private fire(ship: Ship, offset: number) {
+  private fire(ship: Ship, offset: number, weapon: 'front' | 'port' | 'starboard' = 'front') {
     const cooldown =
       ship.kind !== 'player'
-        ? enemyShotCooldown
-        : offset
-          ? this.config.broadsideCooldown
-          : this.config.frontCooldown;
-    if (this.elapsed - ship.shotAt < cooldown) return;
+        ? this.config.enemyShotCooldown
+        : weapon === 'front'
+          ? this.config.frontCooldown
+          : this.config.broadsideCooldown;
+    if (this.elapsed - ship.shotAt[weapon] < cooldown) return;
 
-    ship.shotAt = this.elapsed;
+    ship.shotAt[weapon] = this.elapsed;
+    const countKey = ship.kind === 'player' ? weapon : 'enemy';
+    this.shotCounts[countKey] += 1;
 
     if (offset) {
       playSound('cannon_broadside');
     } else {
-      const soundIndex = 1 + Math.floor(Math.random() * 3);
+      const soundIndex = 1 + Math.floor(this.random() * 3);
       playSound(
         `cannon_fire_${soundIndex}` as 'cannon_fire_1' | 'cannon_fire_2' | 'cannon_fire_3',
       );
     }
 
-    const angles = offset ? [-0.12, 0, 0.12].map((angle) => ship.angle + offset + angle) : [ship.angle];
+    const angle = ship.angle + offset;
+    const projectileOffsets = offset ? [-1, 0, 1] : [0];
 
-    angles.forEach((angle) => {
-      const x = ship.x + Math.cos(angle) * (shipCollisionRadius + 2);
-      const y = ship.y + Math.sin(angle) * (shipCollisionRadius + 2);
+    projectileOffsets.forEach((spacing) => {
+      // Side volleys share a heading and differ only in their perpendicular start position.
+      const perpendicular = angle + Math.PI / 2;
+      const lateralOffset = spacing * this.config.broadsideProjectileSpacing;
+      const x =
+        ship.x +
+        Math.cos(angle) * (shipCollisionRadius + 2) +
+        Math.cos(perpendicular) * lateralOffset;
+      const y =
+        ship.y +
+        Math.sin(angle) * (shipCollisionRadius + 2) +
+        Math.sin(perpendicular) * lateralOffset;
       const trail = new Graphics();
       const view = new Sprite(this.textures.cannonBall);
       view.anchor.set(0.5);
@@ -590,8 +673,11 @@ export class GameEngine {
 
       if (hit) {
         this.createImpactParticles(bullet.x, bullet.y);
-        playSound(Math.random() < 0.5 ? 'ship_wood_hit_1' : 'ship_wood_hit_2');
-        this.damage(hit, this.config.projectileDamage);
+        playSound(this.random() < 0.5 ? 'ship_wood_hit_1' : 'ship_wood_hit_2');
+        this.damage(
+          hit,
+          bullet.fromPlayer ? this.config.projectileDamage : this.config.enemyProjectileDamage,
+        );
       }
 
       const removed =
@@ -606,7 +692,7 @@ export class GameEngine {
       if (removed) {
         if (!hit) {
           playSound(
-            Math.random() < 0.5 ? 'cannonball_water_hit_1' : 'cannonball_water_hit_2',
+            this.random() < 0.5 ? 'cannonball_water_hit_1' : 'cannonball_water_hit_2',
           );
         }
         bullet.view.destroy();
@@ -643,7 +729,7 @@ export class GameEngine {
 
     ship.alive = false;
     this.playExplosion(ship.x, ship.y);
-    playSound(Math.random() < 0.5 ? 'ship_explosion_1' : 'ship_explosion_2');
+    playSound(this.random() < 0.5 ? 'ship_explosion_1' : 'ship_explosion_2');
     if (ship.kind === 'player') {
       setLoopingSound('ship_sailing_loop', false);
       ship.sprite.destroy({ children: true });
@@ -718,15 +804,15 @@ export class GameEngine {
 
   private throwCrew(ship: Ship, count: number) {
     for (let index = 0; index < count; index += 1) {
-      const texture = this.textures.crew[Math.floor(Math.random() * this.textures.crew.length)];
+      const texture = this.textures.crew[Math.floor(this.random() * this.textures.crew.length)];
       const sprite = new Sprite(texture);
       sprite.anchor.set(0.5);
       sprite.scale.set(0.9);
       sprite.position.set(ship.x, ship.y - 8);
       this.stage.addChild(sprite);
 
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 55 + Math.random() * 85;
+      const angle = this.random() * Math.PI * 2;
+      const speed = 55 + this.random() * 85;
       this.crewMembers.push({
         sprite,
         x: ship.x,
@@ -734,8 +820,8 @@ export class GameEngine {
         height: 0,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        verticalSpeed: 95 + Math.random() * 65,
-        rotationSpeed: (Math.random() - 0.5) * 12,
+        verticalSpeed: 95 + this.random() * 65,
+        rotationSpeed: (this.random() - 0.5) * 12,
         age: 0,
       });
     }
@@ -794,11 +880,11 @@ export class GameEngine {
 
     // A small burst of bright flecks makes each cannon hit readable without obscuring the ship.
     for (let index = 0; index < 8; index += 1) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 45 + Math.random() * 105;
+      const angle = this.random() * Math.PI * 2;
+      const speed = 45 + this.random() * 105;
       const graphic = new Graphics()
-        .circle(0, 0, 1.5 + Math.random() * 1.5)
-        .fill(colors[Math.floor(Math.random() * colors.length)]);
+        .circle(0, 0, 1.5 + this.random() * 1.5)
+        .fill(colors[Math.floor(this.random() * colors.length)]);
       graphic.position.set(x, y);
       this.stage.addChild(graphic);
       this.impactParticles.push({
@@ -808,7 +894,7 @@ export class GameEngine {
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed - 18,
         age: 0,
-        duration: 0.28 + Math.random() * 0.18,
+        duration: 0.28 + this.random() * 0.18,
       });
     }
   }
@@ -898,7 +984,9 @@ export class GameEngine {
     });
   }
 
-  private publish() {
+  private publish(force = false) {
+    if (!force && this.hudPublishClock < 0.1) return;
+    this.hudPublishClock = 0;
     this.onHud({
       health: Math.max(0, this.player.health),
       score: this.score,
@@ -911,6 +999,7 @@ export class GameEngine {
   private finish(reason: EndReason) {
     if (!this.running) return;
     this.running = false;
+    this.publish(true);
     this.onEnd(reason, this.score, Math.round(this.elapsed));
   }
 }
